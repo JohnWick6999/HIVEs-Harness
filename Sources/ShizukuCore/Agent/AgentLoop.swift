@@ -220,7 +220,7 @@ public actor AgentLoop {
                 let args = Self.parseArguments(call.arguments)
                 let result: String
                 do {
-                    result = try registry.execute(name: call.name, arguments: args)
+                    result = try await registry.execute(name: call.name, arguments: args)
                 } catch {
                     result = "工具执行失败: \(error.localizedDescription)"
                 }

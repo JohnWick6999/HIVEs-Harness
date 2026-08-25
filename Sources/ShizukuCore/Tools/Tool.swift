@@ -12,13 +12,15 @@ public enum ToolError: Error, Sendable, Equatable {
 }
 
 /// Agent 工具协议。实现必须为 Sendable(纯函数或持有不可变依赖)。
+/// 同步实现可直接满足 async 要求(内置文件/记忆工具保持同步)。
 public protocol Tool: Sendable {
     /// 工具名称,作为模型调用标识
     var name: String { get }
     /// 供模型识别的完整描述(名称/说明/JSON Schema 参数)
     var spec: ToolSpec { get }
-    /// 执行工具;arguments 为 JSON 解析后的参数
-    func run(arguments: [String: AnyCodable]) throws -> String
+    /// 执行工具;arguments 为 JSON 解析后的参数。
+    /// async 以便支持 MCP 等需要进程/网络通信的工具。
+    func run(arguments: [String: AnyCodable]) async throws -> String
 }
 
 /// 工具注册表(对应原版 ToolRegistry)。
@@ -31,33 +33,29 @@ public final class ToolRegistry: @unchecked Sendable {
     public init() {}
 
     public func register(_ tool: any Tool) {
-        lock.lock()
-        defer { lock.unlock() }
-        tools[tool.name] = tool
+        lock.withLock {
+            tools[tool.name] = tool
+        }
     }
 
-    public func execute(name: String, arguments: [String: AnyCodable]) throws -> String {
-        lock.lock()
-        let tool = tools[name]
-        lock.unlock()
+    public func execute(name: String, arguments: [String: AnyCodable]) async throws -> String {
+        let tool = lock.withLock { tools[name] }
         guard let tool else {
             throw ToolError.notFound(name)
         }
-        return try tool.run(arguments: arguments)
+        return try await tool.run(arguments: arguments)
     }
 
     /// 全部工具的模型侧描述(用于 tools 参数)
     public func specs() -> [ToolSpec] {
-        lock.lock()
-        let values = Array(tools.values)
-        lock.unlock()
-        return values.map(\.spec)
+        lock.withLock {
+            Array(tools.values).map(\.spec)
+        }
     }
 
     public func names() -> [String] {
-        lock.lock()
-        let keys = Array(tools.keys)
-        lock.unlock()
-        return keys.sorted()
+        lock.withLock {
+            Array(tools.keys).sorted()
+        }
     }
 }
