@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Swift Package Manager
+.build/
+.buildSystem_debug/
+.buildSystem_workspace/
+Packages/
+.swiftpm/
+
+# Xcode (Phase 2 的 App 工程)
+xcuserdata/
+DerivedData/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Xcode 快照/断点
+*.xccheckout
+*.xcscmblueprint
+xcshareddata/xcschemes/
+!*.xcodeproj/xcshareddata/xcschemes/
+
+# 敏感配置(本地配置不入库)
+config/secrets.*
+*.local.yaml
+
+# 测试产物
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
