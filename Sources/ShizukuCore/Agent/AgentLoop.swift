@@ -5,11 +5,14 @@ public struct ToolTrace: Sendable, Equatable {
     public let tool: String
     public let arguments: String
     public let result: String
+    /// 产出文件路径(UI 可点击打开)
+    public let files: [String]
 
-    public init(tool: String, arguments: String, result: String) {
+    public init(tool: String, arguments: String, result: String, files: [String] = []) {
         self.tool = tool
         self.arguments = arguments
         self.result = result
+        self.files = files
     }
 }
 
@@ -333,19 +336,24 @@ public actor AgentLoop {
             // 执行工具
             for call in toolCalls {
                 let args = Self.parseArguments(call.arguments)
-                let result: String
+                let result: ToolResult
                 do {
                     result = try await registry.execute(name: call.name, arguments: args)
                 } catch {
-                    result = "工具执行失败: \(error.localizedDescription)"
+                    result = ToolResult(text: "工具执行失败: \(error.localizedDescription)")
                 }
-                let trace = ToolTrace(tool: call.name, arguments: call.arguments, result: String(result.prefix(500)))
+                let trace = ToolTrace(
+                    tool: call.name,
+                    arguments: call.arguments,
+                    result: String(result.text.prefix(500)),
+                    files: result.files.map(\.path)
+                )
                 traces.append(trace)
                 yield(.toolCalled(trace))
                 messages.append(
                     ChatMessage(
                         role: .tool,
-                        content: .text(result),
+                        content: .text(result.text),
                         toolCallID: call.id,
                         toolName: call.name
                     )
@@ -426,19 +434,24 @@ public actor AgentLoop {
             // 逐个执行工具
             for call in response.toolCalls {
                 let args = Self.parseArguments(call.arguments)
-                let result: String
+                let result: ToolResult
                 do {
                     result = try await registry.execute(name: call.name, arguments: args)
                 } catch {
-                    result = "工具执行失败: \(error.localizedDescription)"
+                    result = ToolResult(text: "工具执行失败: \(error.localizedDescription)")
                 }
                 traces.append(
-                    ToolTrace(tool: call.name, arguments: call.arguments, result: String(result.prefix(500)))
+                    ToolTrace(
+                        tool: call.name,
+                        arguments: call.arguments,
+                        result: String(result.text.prefix(500)),
+                        files: result.files.map(\.path)
+                    )
                 )
                 messages.append(
                     ChatMessage(
                         role: .tool,
-                        content: .text(result),
+                        content: .text(result.text),
                         toolCallID: call.id,
                         toolName: call.name
                     )

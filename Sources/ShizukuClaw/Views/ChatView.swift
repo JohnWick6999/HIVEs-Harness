@@ -183,12 +183,49 @@ struct MessageRow: View {
             if message.role == .user {
                 Spacer(minLength: 60)
             }
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 2) {
-                Text(message.content.plainText)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+                if !message.content.plainText.isEmpty {
+                    Text(message.content.plainText)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12))
+                }
+                // 工具产出文件:可点击卡片
+                if !message.fileAttachments.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(message.fileAttachments) { file in
+                            HStack(spacing: 8) {
+                                Button {
+                                    openFile(file.path)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "doc.text")
+                                        Text(file.name)
+                                            .lineLimit(1)
+                                        Image(systemName: "arrow.up.forward.app")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    revealInFinder(file.path)
+                                } label: {
+                                    Image(systemName: "folder")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("在 Finder 中显示")
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 Text(roleLabel)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -197,6 +234,14 @@ struct MessageRow: View {
                 Spacer(minLength: 60)
             }
         }
+    }
+
+    private func openFile(_ path: String) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    private func revealInFinder(_ path: String) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
     private var backgroundColor: Color {

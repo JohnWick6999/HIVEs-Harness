@@ -22,8 +22,8 @@ public struct MCPToolAdapter: Tool {
         )
     }
 
-    public func run(arguments: [String: AnyCodable]) async throws -> String {
-        try await client.callTool(name: name, arguments: arguments)
+    public func run(arguments: [String: AnyCodable]) async throws -> ToolResult {
+        try await ToolResult(text: client.callTool(name: name, arguments: arguments))
     }
 }
 

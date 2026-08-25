@@ -11,6 +11,18 @@ public enum ToolError: Error, Sendable, Equatable {
     case execution(String)
 }
 
+/// 工具执行结果:文本 + 产出文件(可点击打开)。
+public struct ToolResult: Sendable, Equatable {
+    public let text: String
+    /// 产出文件(绝对路径)
+    public let files: [URL]
+
+    public init(text: String, files: [URL] = []) {
+        self.text = text
+        self.files = files
+    }
+}
+
 /// Agent 工具协议。实现必须为 Sendable(纯函数或持有不可变依赖)。
 /// 同步实现可直接满足 async 要求(内置文件/记忆工具保持同步)。
 public protocol Tool: Sendable {
@@ -20,7 +32,7 @@ public protocol Tool: Sendable {
     var spec: ToolSpec { get }
     /// 执行工具;arguments 为 JSON 解析后的参数。
     /// async 以便支持 MCP 等需要进程/网络通信的工具。
-    func run(arguments: [String: AnyCodable]) async throws -> String
+    func run(arguments: [String: AnyCodable]) async throws -> ToolResult
 }
 
 /// 工具注册表(对应原版 ToolRegistry)。
@@ -38,7 +50,7 @@ public final class ToolRegistry: @unchecked Sendable {
         }
     }
 
-    public func execute(name: String, arguments: [String: AnyCodable]) async throws -> String {
+    public func execute(name: String, arguments: [String: AnyCodable]) async throws -> ToolResult {
         let tool = lock.withLock { tools[name] }
         guard let tool else {
             throw ToolError.notFound(name)

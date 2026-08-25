@@ -37,8 +37,8 @@ struct ToolRegistryTests {
     struct EchoTool: Tool {
         let name = "echo"
         let spec = ToolSpec(name: "echo", description: "echo")
-        func run(arguments: [String: AnyCodable]) throws -> String {
-            (arguments["text"]?.value as? String) ?? ""
+        func run(arguments: [String: AnyCodable]) throws -> ToolResult {
+            ToolResult(text: (arguments["text"]?.value as? String) ?? "")
         }
     }
 
@@ -46,7 +46,7 @@ struct ToolRegistryTests {
     func registerAndExecute() async throws {
         let registry = ToolRegistry()
         registry.register(EchoTool())
-        #expect(try await registry.execute(name: "echo", arguments: ["text": AnyCodable("hi")]) == "hi")
+        #expect(try await registry.execute(name: "echo", arguments: ["text": AnyCodable("hi")]).text == "hi")
         #expect(registry.names() == ["echo"])
         #expect(registry.specs().count == 1)
     }
@@ -72,7 +72,7 @@ struct BuiltinFileToolsTests {
         try Data([0x89, 0x50]).write(to: ws.appendingPathComponent("img.png"))
 
         let tool = BuiltinTools.ListDirTool(workspace: ws)
-        let output = try await tool.run(arguments: [:])
+        let output = try await tool.run(arguments: [:]).text
         #expect(output.contains("a.txt"))
         #expect(output.contains("sub/"))
         #expect(output.contains("img.png [image, skip]"))
@@ -85,13 +85,13 @@ struct BuiltinFileToolsTests {
         try Data([0x89, 0x50, 0x4E, 0x47]).write(to: ws.appendingPathComponent("pic.png"))
 
         let tool = BuiltinTools.ReadFileTool(workspace: ws)
-        let big = try await tool.run(arguments: ["path": AnyCodable("big.txt")])
+        let big = try await tool.run(arguments: ["path": AnyCodable("big.txt")]).text
         #expect(big.hasSuffix("...[truncated]"))
 
-        let image = try await tool.run(arguments: ["path": AnyCodable("pic.png")])
+        let image = try await tool.run(arguments: ["path": AnyCodable("pic.png")]).text
         #expect(image.contains("图片文件"))
 
-        let missing = try await tool.run(arguments: ["path": AnyCodable("nope.txt")])
+        let missing = try await tool.run(arguments: ["path": AnyCodable("nope.txt")]).text
         #expect(missing.contains("文件不存在"))
     }
 
@@ -99,10 +99,13 @@ struct BuiltinFileToolsTests {
     func writeFile() async throws {
         let ws = try tempDir()
         let tool = BuiltinTools.WriteFileTool(workspace: ws)
-        let output = try await tool.run(arguments: [
+        let result = try await tool.run(arguments: [
             "path": AnyCodable("notes/hello.txt"),
             "content": AnyCodable("你好 Shizuku"),
         ])
+        let output = result.text
+        #expect(result.files.count == 1)
+        #expect(result.files.first?.lastPathComponent == "hello.txt")
         #expect(output.contains("已写入"))
         let read = try String(contentsOf: ws.appendingPathComponent("notes/hello.txt"), encoding: .utf8)
         #expect(read == "你好 Shizuku")
@@ -118,13 +121,13 @@ struct BuiltinMemoryToolsTests {
         let store = try SQLiteStore(path: dir.appendingPathComponent("agent.db").path)
 
         let add = BuiltinTools.AddMemoryTool(store: store, persona: "shizuku")
-        #expect(try await add.run(arguments: ["content": AnyCodable("用户喜欢 R&B")]).contains("已写入"))
+        #expect(try await add.run(arguments: ["content": AnyCodable("用户喜欢 R&B")]).text.contains("已写入"))
 
         let search = BuiltinTools.SearchMemoryTool(store: store, persona: "shizuku")
-        let result = try await search.run(arguments: ["query": AnyCodable("R&B")])
+        let result = try await search.run(arguments: ["query": AnyCodable("R&B")]).text
         #expect(result.contains("R&B"))
 
-        let empty = try await search.run(arguments: ["query": AnyCodable("不存在的关键词xyz")])
+        let empty = try await search.run(arguments: ["query": AnyCodable("不存在的关键词xyz")]).text
         #expect(empty.contains("没有找到"))
     }
 }
@@ -141,7 +144,7 @@ struct RunLocalAgentToolTests {
         let output = try await tool.run(arguments: [
             "agent": AnyCodable("echo"),
             "prompt": AnyCodable("hello from shizuku"),
-        ])
+        ]).text
         #expect(output == "hello from shizuku")
     }
 
@@ -151,7 +154,7 @@ struct RunLocalAgentToolTests {
         let output = try await tool.run(arguments: [
             "agent": AnyCodable("nope"),
             "prompt": AnyCodable("x"),
-        ])
+        ]).text
         #expect(output.contains("未知 Agent"))
     }
 }

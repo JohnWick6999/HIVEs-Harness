@@ -117,7 +117,7 @@ struct MCPRegistryTests {
             name: "echo",
             arguments: ["text": AnyCodable("via registry")]
         )
-        #expect(result == "echo:via registry")
+        #expect(result.text == "echo:via registry")
     }
 
     @Test("禁用服务器不产生工具")

@@ -134,6 +134,13 @@ final class AppState {
                     pumpTyping(placeholderID: placeholderID)
                 case .toolCalled(let trace):
                     lastToolTrace.append(trace)
+                    // 产出文件挂到当前助手消息,渲染为可点击附件卡片
+                    if !trace.files.isEmpty,
+                       let index = messages.firstIndex(where: { $0.id == placeholderID }) {
+                        var message = messages[index]
+                        message.fileAttachments = trace.files.map { FileAttachment(path: $0) }
+                        messages[index] = message
+                    }
                 case .fallback(let text):
                     stopTyping()
                     updateAssistantMessage(id: placeholderID, text: text)

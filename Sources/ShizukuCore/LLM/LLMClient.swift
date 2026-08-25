@@ -42,6 +42,19 @@ public enum ChatContent: Codable, Sendable, Equatable {
     }
 }
 
+/// 工具产出文件附件(UI 渲染为可点击卡片)
+public struct FileAttachment: Codable, Sendable, Equatable, Identifiable {
+    public let id: UUID
+    public let path: String
+    public let name: String
+
+    public init(id: UUID = UUID(), path: String, name: String? = nil) {
+        self.id = id
+        self.path = path
+        self.name = name ?? (path as NSString).lastPathComponent
+    }
+}
+
 /// 对话消息。
 public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
     public var id: UUID
@@ -53,6 +66,8 @@ public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
     public var toolCallID: String?
     /// 工具名(tool 消息)
     public var toolName: String?
+    /// 工具产出的文件(展示为可点击附件)
+    public var fileAttachments: [FileAttachment]
 
     public init(
         role: ChatRole,
@@ -60,6 +75,7 @@ public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
         toolCalls: [ToolCall]? = nil,
         toolCallID: String? = nil,
         toolName: String? = nil,
+        fileAttachments: [FileAttachment] = [],
         id: UUID = UUID()
     ) {
         self.id = id
@@ -68,6 +84,7 @@ public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
         self.toolCalls = toolCalls
         self.toolCallID = toolCallID
         self.toolName = toolName
+        self.fileAttachments = fileAttachments
     }
 
     public static func text(_ role: ChatRole, _ text: String) -> ChatMessage {

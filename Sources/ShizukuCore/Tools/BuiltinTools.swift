@@ -27,16 +27,16 @@ public enum BuiltinTools {
             self.safePath = SafePath(workspace: workspace)
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> String {
+        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             let raw = arguments["path"]?.value as? String ?? "."
             let target = try safePath.resolve(raw)
             guard FileManager.default.fileExists(atPath: target.path) else {
-                return "目录不存在: \(raw)"
+                return ToolResult(text: "目录不存在: \(raw)")
             }
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
             guard isDirectory.boolValue else {
-                return "不是目录: \(raw)"
+                return ToolResult(text: "不是目录: \(raw)")
             }
             let items = (try? FileManager.default.contentsOfDirectory(atPath: target.path)) ?? []
             let lines = items.sorted().map { item in
@@ -46,12 +46,12 @@ public enum BuiltinTools {
                 if isDir.boolValue {
                     return "\(item)/"
                 }
-                if imageSuffixes.contains(full.pathExtension.lowercased().isEmpty ? "" : ".\(full.pathExtension.lowercased())") {
+                if imageSuffixes.contains(".\(full.pathExtension.lowercased())") {
                     return "\(item) [image, skip]"
                 }
                 return item
             }
-            return lines.isEmpty ? "(空目录)" : lines.joined(separator: "\n")
+            return ToolResult(text: lines.isEmpty ? "(空目录)" : lines.joined(separator: "\n"))
         }
     }
 
@@ -76,32 +76,32 @@ public enum BuiltinTools {
             self.maxChars = maxChars
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> String {
+        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             guard let raw = arguments["path"]?.value as? String else {
                 throw ToolError.invalidArguments("缺少 path 参数")
             }
             let target = try safePath.resolve(raw)
             guard FileManager.default.fileExists(atPath: target.path) else {
-                return "文件不存在: \(raw)"
+                return ToolResult(text: "文件不存在: \(raw)")
             }
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory)
             guard !isDirectory.boolValue else {
-                return "不是文件: \(raw)"
+                return ToolResult(text: "不是文件: \(raw)")
             }
             if imageSuffixes.contains(".\(target.pathExtension.lowercased())") {
-                return "\(target.lastPathComponent) 是图片文件。当前主模型不能看图,不要再调用 read_file 读取图片,请让用户用文字描述内容。"
+                return ToolResult(text: "\(target.lastPathComponent) 是图片文件。当前主模型不能看图,不要再调用 read_file 读取图片,请让用户用文字描述内容。")
             }
             guard let data = FileManager.default.contents(atPath: target.path) else {
-                return "读取失败: \(raw)"
+                return ToolResult(text: "读取失败: \(raw)")
             }
             guard let text = String(data: data, encoding: .utf8) else {
-                return "\(target.lastPathComponent) 是二进制文件,已跳过。"
+                return ToolResult(text: "\(target.lastPathComponent) 是二进制文件,已跳过。")
             }
             if text.count > maxChars {
-                return String(text.prefix(maxChars)) + "\n...[truncated]"
+                return ToolResult(text: String(text.prefix(maxChars)) + "\n...[truncated]")
             }
-            return text
+            return ToolResult(text: text)
         }
     }
 
@@ -127,7 +127,7 @@ public enum BuiltinTools {
             self.safePath = SafePath(workspace: workspace)
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> String {
+        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             guard let raw = arguments["path"]?.value as? String else {
                 throw ToolError.invalidArguments("缺少 path 参数")
             }
@@ -138,7 +138,11 @@ public enum BuiltinTools {
                 withIntermediateDirectories: true
             )
             try content.write(to: target, atomically: true, encoding: .utf8)
-            return "已写入 \(raw) (\(content.count) chars)"
+            // 产出文件随结果返回,UI 渲染为可点击卡片
+            return ToolResult(
+                text: "已写入 \(raw) (\(content.count) chars)",
+                files: [target]
+            )
         }
     }
 
@@ -165,13 +169,13 @@ public enum BuiltinTools {
             self.topK = topK
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> String {
+        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             let query = arguments["query"]?.value as? String ?? ""
             let items = try store.searchMemories(query: query, persona: persona, topK: topK)
             if items.isEmpty {
-                return "没有找到相关记忆。"
+                return ToolResult(text: "没有找到相关记忆。")
             }
-            return items.map { "- \($0.content)" }.joined(separator: "\n")
+            return ToolResult(text: items.map { "- \($0.content)" }.joined(separator: "\n"))
         }
     }
 
@@ -194,13 +198,13 @@ public enum BuiltinTools {
             self.persona = persona
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> String {
+        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             let content = arguments["content"]?.value as? String ?? ""
             guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return "记忆内容为空。"
+                return ToolResult(text: "记忆内容为空。")
             }
             _ = try store.addMemory(persona: persona, content: content, kind: "long_term")
-            return "已写入长期记忆。"
+            return ToolResult(text: "已写入长期记忆。")
         }
     }
 
@@ -241,16 +245,16 @@ public enum BuiltinTools {
             self.timeout = timeout
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> String {
+        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             guard let agent = arguments["agent"]?.value as? String else {
                 throw ToolError.invalidArguments("缺少 agent 参数")
             }
             let prompt = arguments["prompt"]?.value as? String ?? ""
             guard let executable = agentCommands[agent] else {
-                return "未知 Agent: \(agent)"
+                return ToolResult(text: "未知 Agent: \(agent)")
             }
             guard FileManager.default.isExecutableFile(atPath: executable) else {
-                return "Agent \(agent) 未安装(找不到 \(executable))。"
+                return ToolResult(text: "Agent \(agent) 未安装(找不到 \(executable))。")
             }
 
             let process = Process()
@@ -264,15 +268,14 @@ public enum BuiltinTools {
             do {
                 try process.run()
             } catch {
-                return "启动 Agent 失败: \(error.localizedDescription)"
+                return ToolResult(text: "启动 Agent 失败: \(error.localizedDescription)")
             }
 
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
-            _ = timeout
             let output = String(data: data, encoding: .utf8) ?? "(无输出)"
             let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "(无输出)" : trimmed
+            return ToolResult(text: trimmed.isEmpty ? "(无输出)" : trimmed)
         }
     }
     #endif
