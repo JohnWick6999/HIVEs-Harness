@@ -355,6 +355,39 @@ public final class SQLiteStore: @unchecked Sendable {
         return decodeJSONDict(textValue(row["state_json"] ?? "{}"))
     }
 
+    /// 保存会话消息历史(对话检查点,对齐原版 checkpoint 最近 40 条)
+    public func saveMessages(threadID: String, persona: String, messages: [ChatMessage]) throws {
+        let data = try JSONEncoder().encode(messages)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw StorageError.encode("消息编码失败")
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            """
+            INSERT INTO checkpoints(thread_id, persona, state_json, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(thread_id, persona) DO UPDATE SET
+                state_json=excluded.state_json,
+                updated_at=excluded.updated_at
+            """,
+            [.text(threadID), .text(persona), .text(json), .text(now())]
+        )
+    }
+
+    public func loadMessages(threadID: String, persona: String) throws -> [ChatMessage]? {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(
+            "SELECT state_json FROM checkpoints WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        guard let row = rows.first,
+              let data = textValue(row["state_json"] ?? "").data(using: .utf8)
+        else { return nil }
+        return try? JSONDecoder().decode([ChatMessage].self, from: data)
+    }
+
     // MARK: - KV
 
     public func setKV(key: String, value: AnyCodable) throws {
