@@ -55,4 +55,13 @@ public enum TextEmbedding {
         }
         return dot
     }
+
+    /// 查询与记忆是否共享至少一个非空白字符。
+    /// 哈希向量 64 维碰撞噪声大(实测无关文本余弦可达 0.3),
+    /// 需先用共享字符过滤,再做余弦排序。
+    public static func hasSharedCharacters(_ query: String, _ content: String) -> Bool {
+        let querySet = Set(query.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })
+        let contentSet = Set(content.unicodeScalars)
+        return !querySet.isDisjoint(with: contentSet)
+    }
 }

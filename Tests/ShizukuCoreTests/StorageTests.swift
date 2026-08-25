@@ -30,6 +30,14 @@ struct TextEmbeddingTests {
         let norm = sqrt(vector.reduce(0) { $0 + $1 * $1 })
         #expect(abs(norm - 1) < 1e-9)
     }
+
+    @Test("共享字符检测(忽略空白)")
+    func sharedCharacters() {
+        #expect(TextEmbedding.hasSharedCharacters("苹果", "苹果电脑很好用"))
+        #expect(TextEmbedding.hasSharedCharacters("Apple Music", "用户在用 Apple Music 听 R&B"))
+        #expect(!TextEmbedding.hasSharedCharacters("不存在的关键词xyz", "用户喜欢 R&B"))
+        #expect(!TextEmbedding.hasSharedCharacters("hello", "你好世界"))
+    }
 }
 
 @Suite("SQLiteStore")

@@ -307,6 +307,9 @@ public final class SQLiteStore: @unchecked Sendable {
         }
         let rows = try queryLocked(sql, values)
         let scored = rows.compactMap { row -> MemoryItem? in
+            let content = textValue(row["content"] ?? "")
+            // 共享字符过滤:无任何重叠字符视为不相关(哈希向量碰撞噪声大,不能只靠余弦阈值)
+            guard TextEmbedding.hasSharedCharacters(query, content) else { return nil }
             let raw = textValue(row["embedding"] ?? "")
             guard let stored = decodeJSONArray(raw) else { return nil }
             let score = TextEmbedding.cosine(queryVector, stored)
