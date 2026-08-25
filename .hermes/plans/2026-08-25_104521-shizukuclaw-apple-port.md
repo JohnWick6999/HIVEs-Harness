@@ -1,6 +1,8 @@
-# ShizukuClaw Apple 移植计划(Shizuku Apple)
+# ShizukuClaw Apple 移植计划
 
 > **目标:** 把 ShizukuClaw(Python 本地 AI 智能体)用 Swift 原生重写,适配 Apple 全生态:macOS、iOS、iPadOS、watchOS、visionOS(按优先级推进)。
+
+**命名(已定):** 软件名 **ShizukuClaw**(App/产品名);内部核心库名 **ShizukuCore**(引擎库);与 GitHub 原仓库同名,保持品牌一致。
 
 **架构:** 单一共享核心 Swift Package(`ShizukuCore`,纯 Foundation + Swift Concurrency,全平台通用)+ 每平台一个薄 SwiftUI App 壳。核心承载 Agent 循环、LLM 客户端、工具、记忆、存储、MCP、人格,平台壳只负责 UI 和系统集成。
 
@@ -134,7 +136,7 @@
 9. 单测覆盖:LLM mock、工具沙箱、记忆检索、循环轮次上限、MCP JSON-RPC 编解码
 
 ### Phase 2:macOS App(2 周)
-1. Xcode 工程 `Shizuku macOS`:SwiftUI 聊天界面(消息流 + 流式打字效果 + 工具调用轨迹展示,对应原版 trace)
+1. Xcode 工程 `ShizukuClaw`(macOS target):SwiftUI 聊天界面(消息流 + 流式打字效果 + 工具调用轨迹展示,对应原版 trace)
 2. 人格选择器、长期记忆管理页(查看/删除/新增)
 3. 设置页:模型/端点/API Key(Keychain 存储,回显 `***` 逻辑对齐原版)、工作模式开关 + 生物认证解锁
 4. **MCP 服务器管理 UI**(servers.json 兼容原格式:新增/编辑/启停/状态)
