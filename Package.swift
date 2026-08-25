@@ -37,6 +37,9 @@ let package = Package(
         .testTarget(
             name: "ShizukuCoreTests",
             dependencies: ["ShizukuCore"],
+            exclude: [
+                "Fixtures",  // 假 MCP 服务器脚本,通过 #filePath 运行时定位,不入包
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],
