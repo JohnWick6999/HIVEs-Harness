@@ -17,6 +17,10 @@ let package = Package(
             name: "ShizukuCore",
             targets: ["ShizukuCore"]
         ),
+        .executable(
+            name: "ShizukuClaw",
+            targets: ["ShizukuClaw"]
+        ),
     ],
     dependencies: [
         // 刻意保持零外部依赖:系统 SQLite3 + Foundation 已覆盖全部需求。
@@ -40,6 +44,15 @@ let package = Package(
             exclude: [
                 "Fixtures",  // 假 MCP 服务器脚本,通过 #filePath 运行时定位,不入包
             ],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency"),
+            ],
+        ),
+        // macOS App(Alpha 阶段以可执行目标运行,swift run 即弹窗;
+        // Beta 阶段再包 .xcodeproj 转正式 .app)
+        .executableTarget(
+            name: "ShizukuClaw",
+            dependencies: ["ShizukuCore"],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],

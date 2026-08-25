@@ -125,6 +125,8 @@
 3. 验证:`swift build && swift test` 空包通过;`git init && 首次 commit`
 
 ### Phase 1:ShizukuCore v1(核心,1.5 周)——纯 SPM,全程 `swift test` 验证
+> ✅ **已完成(2026-08-25)** 8 个提交,54 项测试全绿,0 警告,~3800 行 Swift。
+> 关键偏差:① 弃用 GRDB → 系统 SQLite3 封装(实测 github.com 不可达,零依赖保证构建可复现);② Tool 协议升级为 async(MCP 工具需要);③ 记忆检索加"共享字符过滤 + 余弦排序"(64 维哈希向量碰撞噪声实测达 0.3,纯余弦阈值不可靠)。
 1. **Config + Keychain**:`AppConfig` Codable(provider/model/baseURL/temperature/maxRounds/人格默认值);Keychain 封装 `KeychainStore`
 2. **LLM 层**:`LLMClient` protocol(async chat 支持 streaming + 非流式、embed);`OpenAICompatibleClient`(URLSession,任意 baseURL + Bearer Key,与原版 `base_url` 配置对齐);`LocalOllamaClient`(macOS)
 3. **Storage**:GRDB 接入,4 表 schema + 迁移 v1;`ChatRecord/Memory/Checkpoint/KV` Codable 模型;`MemoryStore`(写入/列表/搜索,hash 向量 + 余弦)

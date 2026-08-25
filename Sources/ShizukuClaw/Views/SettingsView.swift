@@ -1,0 +1,108 @@
+import SwiftUI
+import ShizukuCore
+
+struct SettingsView: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        @Bindable var state = state
+        TabView {
+            llmTab($state)
+                .tabItem { Label("模型", systemImage: "cpu") }
+            agentTab($state)
+                .tabItem { Label("Agent", systemImage: "gearshape.2") }
+            aboutTab
+                .tabItem { Label("关于", systemImage: "info.circle") }
+        }
+        .frame(width: 460, height: 340)
+        .padding(16)
+    }
+
+    // MARK: - 模型设置
+
+    private func llmTab(_ state: Bindable<AppState>) -> some View {
+        Form {
+            Picker("供应商", selection: state.config.llm.provider) {
+                Text("OpenAI 兼容端点").tag("openai_compatible")
+                Text("本地 Ollama").tag("ollama")
+            }
+            TextField("Base URL", text: state.config.llm.baseURL)
+                .textFieldStyle(.roundedBorder)
+            TextField("模型", text: state.config.llm.model)
+                .textFieldStyle(.roundedBorder)
+            SecureField("API Key(存入钥匙串)", text: state.apiKey)
+                .textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("温度 \(state.config.llm.temperature.wrappedValue, specifier: "%.1f")")
+                Slider(value: state.config.llm.temperature, in: 0...1.5, step: 0.1)
+            }
+            HStack {
+                Spacer()
+                Button("保存") {
+                    state.wrappedValue.saveConfig()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - Agent 设置
+
+    private func agentTab(_ state: Bindable<AppState>) -> some View {
+        Form {
+            Picker("默认人格", selection: state.selectedPersona) {
+                ForEach(state.wrappedValue.availablePersonas) { persona in
+                    Text("\(persona.meta.name) (\(persona.id))")
+                        .tag(persona.id)
+                }
+            }
+            Stepper("最大工具轮数:\(state.config.agent.maxRounds)", value: state.config.agent.maxRounds, in: 1...20)
+            LabeledContent("工作区") {
+                Text(state.wrappedValue.workspace.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            LabeledContent("数据库") {
+                Text(state.wrappedValue.store.status()["path"] ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            HStack {
+                Spacer()
+                Button("保存") {
+                    state.wrappedValue.saveConfig()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - 关于
+
+    private var aboutTab: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "cat.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.tint)
+            Text("ShizukuClaw")
+                .font(.title2)
+                .fontWeight(.semibold)
+            Text("Alpha 0.1 · 由 Shizuku_Nya_Bot 原生移植")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("核心:ShizukuCore v\(ShizukuCore.version)\n本地智能体 · 人格 · 记忆 · MCP")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+}
