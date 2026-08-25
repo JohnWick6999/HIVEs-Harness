@@ -232,8 +232,15 @@ public actor AgentLoop {
             yield: yield
         )
 
-        // 落盘(与 invoke 一致)
-        history.append(.text(.assistant, reply))
+        // 落盘(与 invoke 一致);assistant 消息带上产出文件附件以便历史恢复后仍可点击
+        let attachments = traces.flatMap(\.files).map { FileAttachment(path: $0) }
+        history.append(
+            ChatMessage(
+                role: .assistant,
+                content: .text(reply),
+                fileAttachments: attachments
+            )
+        )
         try? store.saveMessages(threadID: thread, persona: current, messages: Array(history.suffix(historyLimit)))
         try? store.addChatRecord(persona: current, role: "user", content: text)
         try? store.addChatRecord(persona: current, role: "assistant", content: reply)

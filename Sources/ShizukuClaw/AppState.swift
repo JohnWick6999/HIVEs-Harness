@@ -191,7 +191,10 @@ final class AppState {
 
     private func updateAssistantMessage(id: UUID, text: String) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
-        messages[index] = ChatMessage(role: .assistant, content: .text(text), id: id)
+        // 只更新文本,保留 fileAttachments 等字段(否则工具卡片会被冲掉)
+        var message = messages[index]
+        message.content = .text(text)
+        messages[index] = message
     }
 
     /// 持久化配置与 API Key
