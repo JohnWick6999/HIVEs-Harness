@@ -92,6 +92,9 @@ final class AppState {
         isBusy = true
         errorMessage = nil
         lastToolTrace = []
+        typingPending = ""
+        typingTask?.cancel()
+        typingTask = nil
         defer { isBusy = false }
 
         // 占位助手消息,流式期间原地更新
@@ -109,24 +112,57 @@ final class AppState {
             for try await event in await loop.stream(message: trimmed, persona: selectedPersona) {
                 switch event {
                 case .chunk(let delta):
-                    if let last = messages.last(where: { $0.id == placeholderID }),
-                       case .text(let current) = last.content {
-                        updateAssistantMessage(id: placeholderID, text: current + delta)
-                    }
+                    // 增量进缓冲区,由打字动画 Task 平滑渲染
+                    typingPending += delta
+                    pumpTyping(placeholderID: placeholderID)
                 case .toolCalled(let trace):
                     lastToolTrace.append(trace)
                 case .fallback(let text):
+                    stopTyping()
                     updateAssistantMessage(id: placeholderID, text: text)
                 case .limitReached(let text):
+                    stopTyping()
                     updateAssistantMessage(id: placeholderID, text: text)
                 case .finished(let result):
+                    stopTyping()
                     updateAssistantMessage(id: placeholderID, text: result.reply)
                     lastToolTrace = result.trace
                 }
             }
         } catch {
+            stopTyping()
             updateAssistantMessage(id: placeholderID, text: "⚠️ 调用失败: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - 打字动画
+
+    private var typingPending = ""
+    private var typingTask: Task<Void, Never>?
+
+    /// 启动(或延续)打字渲染:每帧从缓冲区取少量字符追加到显示文本
+    private func pumpTyping(placeholderID: UUID) {
+        guard typingTask == nil else { return }
+        typingTask = Task {
+            while !typingPending.isEmpty {
+                let take = min(typingPending.count, 3)  // 每帧 3 字符
+                let batch = String(typingPending.prefix(take))
+                typingPending.removeFirst(take)
+                if let last = messages.last(where: { $0.id == placeholderID }),
+                   case .text(let current) = last.content {
+                    updateAssistantMessage(id: placeholderID, text: current + batch)
+                }
+                try? await Task.sleep(for: .milliseconds(24))
+            }
+            typingTask = nil
+        }
+    }
+
+    /// 结束打字:取消动画,清空残留缓冲区
+    private func stopTyping() {
+        typingTask?.cancel()
+        typingTask = nil
+        typingPending = ""
     }
 
     private func updateAssistantMessage(id: UUID, text: String) {
