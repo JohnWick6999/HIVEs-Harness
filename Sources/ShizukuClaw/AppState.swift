@@ -83,6 +83,57 @@ final class AppState {
         }
     }
 
+    /// 流式发送:文本增量实时更新最后一条助手消息(打字机效果)
+    func sendStreaming(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isBusy else { return }
+
+        messages.append(.text(.user, trimmed))
+        isBusy = true
+        errorMessage = nil
+        lastToolTrace = []
+        defer { isBusy = false }
+
+        // 占位助手消息,流式期间原地更新
+        let placeholderID = UUID()
+        messages.append(ChatMessage(role: .assistant, content: .text(""), id: placeholderID))
+
+        let loop = AgentLoop(
+            store: store,
+            config: config,
+            keychain: keychain,
+            personas: personas,
+            workspace: workspace
+        )
+        do {
+            for try await event in await loop.stream(message: trimmed, persona: selectedPersona) {
+                switch event {
+                case .chunk(let delta):
+                    if let last = messages.last(where: { $0.id == placeholderID }),
+                       case .text(let current) = last.content {
+                        updateAssistantMessage(id: placeholderID, text: current + delta)
+                    }
+                case .toolCalled(let trace):
+                    lastToolTrace.append(trace)
+                case .fallback(let text):
+                    updateAssistantMessage(id: placeholderID, text: text)
+                case .limitReached(let text):
+                    updateAssistantMessage(id: placeholderID, text: text)
+                case .finished(let result):
+                    updateAssistantMessage(id: placeholderID, text: result.reply)
+                    lastToolTrace = result.trace
+                }
+            }
+        } catch {
+            updateAssistantMessage(id: placeholderID, text: "⚠️ 调用失败: \(error.localizedDescription)")
+        }
+    }
+
+    private func updateAssistantMessage(id: UUID, text: String) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[index] = ChatMessage(role: .assistant, content: .text(text), id: id)
+    }
+
     /// 持久化配置与 API Key
     func saveConfig() {
         try? configStore.save(config)

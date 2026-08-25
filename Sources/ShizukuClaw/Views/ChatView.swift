@@ -101,7 +101,7 @@ struct ChatView: View {
                 }
                 .padding(14)
             }
-            .onChange(of: state.messages.count) {
+            .onChange(of: state.messages.last?.content.plainText) {
                 withAnimation {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
@@ -168,7 +168,7 @@ struct ChatView: View {
         let text = input
         input = ""
         Task {
-            await state.send(text)
+            await state.sendStreaming(text)
         }
     }
 }

@@ -2,23 +2,36 @@ import Foundation
 @testable import ShizukuCore
 import Testing
 
-/// 脚本化 Mock LLM:按顺序弹出预设响应,并记录收到的消息。
-actor MockLLMClient: LLMClient {
+/// 脚本化 Mock LLM:按顺序弹出预设响应(含流式),并记录收到的消息。
+final class MockLLMClient: LLMClient, @unchecked Sendable {
+    private let lock = NSLock()
     private var responses: [LLMResponse]
+    private var streamResponses: [[LLMStreamChunk]]
     private var captured: [[ChatMessage]] = []
 
-    init(responses: [LLMResponse]) {
+    init(responses: [LLMResponse], streamResponses: [[LLMStreamChunk]] = []) {
         self.responses = responses
+        self.streamResponses = streamResponses
     }
 
     func chat(messages: [ChatMessage], tools: [ToolSpec]?) async throws -> LLMResponse {
-        captured.append(messages)
-        if responses.isEmpty { return LLMResponse(content: "(默认回复)") }
-        return responses.removeFirst()
+        lock.withLock {
+            captured.append(messages)
+            if responses.isEmpty { return LLMResponse(content: "(默认回复)") }
+            return responses.removeFirst()
+        }
     }
 
-    nonisolated func stream(messages: [ChatMessage], tools: [ToolSpec]?) -> AsyncThrowingStream<LLMStreamChunk, Error> {
+    func stream(messages: [ChatMessage], tools: [ToolSpec]?) -> AsyncThrowingStream<LLMStreamChunk, Error> {
         AsyncThrowingStream { continuation in
+            let chunks = lock.withLock {
+                captured.append(messages)
+                if streamResponses.isEmpty { return [LLMStreamChunk]() }
+                return streamResponses.removeFirst()
+            }
+            for chunk in chunks {
+                continuation.yield(chunk)
+            }
             continuation.finish()
         }
     }
@@ -26,7 +39,7 @@ actor MockLLMClient: LLMClient {
     func embed(text: String) async throws -> [Double]? { nil }
 
     func capturedMessages() -> [[ChatMessage]] {
-        captured
+        lock.withLock { captured }
     }
 }
 
@@ -165,10 +178,84 @@ struct AgentLoopTests {
         )
         _ = try await loop.invoke(message: "用户喜欢抹茶,是吗")
 
-        let system = (await mock.capturedMessages()).first?.first?.content.plainText ?? ""
+        let system = mock.capturedMessages().first?.first?.content.plainText ?? ""
         #expect(system.contains("你是测试酱,一个认真的助手"))
         #expect(system.contains("口头禅是明白"))
         #expect(system.contains("用户喜欢抹茶"))
+    }
+
+    @Test("流式:文本增量与 finished 事件")
+    func streamChunks() async throws {
+        let ws = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shizuku-agent-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+        let dbDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shizuku-db-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
+        let store = try SQLiteStore(path: dbDir.appendingPathComponent("agent.db").path)
+        let mock = MockLLMClient(
+            responses: [],
+            streamResponses: [[
+                LLMStreamChunk(delta: "你"),
+                LLMStreamChunk(delta: "好"),
+                LLMStreamChunk(delta: "呀"),
+            ]]
+        )
+        let loop = AgentLoop(
+            store: store,
+            config: .default,
+            keychain: KeychainStore(service: "com.shizukuclaw.test.\(UUID().uuidString)"),
+            workspace: ws,
+            clientOverride: mock
+        )
+
+        var text = ""
+        var finished: AgentResult?
+        for try await event in await loop.stream(message: "嗨") {
+            switch event {
+            case .chunk(let delta):
+                text += delta
+            case .finished(let result):
+                finished = result
+            case .fallback, .toolCalled, .limitReached:
+                break
+            }
+        }
+        #expect(text == "你好呀")
+        #expect(finished?.reply == "你好呀")
+        #expect(finished?.engine == "tool-stream")
+    }
+
+    @Test("流式:无 API Key 发出 fallback 事件")
+    func streamFallback() async throws {
+        let ws = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shizuku-agent-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+        let dbDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shizuku-db-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
+        let store = try SQLiteStore(path: dbDir.appendingPathComponent("agent.db").path)
+        let loop = AgentLoop(
+            store: store,
+            config: .default,
+            keychain: KeychainStore(service: "com.shizukuclaw.empty.\(UUID().uuidString)"),
+            workspace: ws
+        )
+
+        var gotFallback = false
+        var gotFinished = false
+        for try await event in await loop.stream(message: "测试") {
+            switch event {
+            case .fallback(let text):
+                gotFallback = text.contains("本地回退")
+            case .finished(let result):
+                gotFinished = result.engine == "local-fallback"
+            default:
+                break
+            }
+        }
+        #expect(gotFallback)
+        #expect(gotFinished)
     }
 
     @Test("内置人格资源加载")
