@@ -146,4 +146,17 @@ struct SQLiteStoreTests {
         let store2 = try SQLiteStore(path: path)
         #expect(try store2.listChatRecords().count == 1)
     }
+
+    @Test("删除单条记忆")
+    func deleteMemory() throws {
+        let store = try tempStore()
+        let id1 = try store.addMemory(persona: "shizuku", content: "记忆一", kind: "long_term")
+        let id2 = try store.addMemory(persona: "shizuku", content: "记忆二", kind: "long_term")
+
+        #expect(try store.deleteMemory(id: id1) == true)
+        #expect(try store.deleteMemory(id: 99999) == false)
+        let remaining = try store.listMemories(persona: "shizuku")
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.content == "记忆二")
+    }
 }

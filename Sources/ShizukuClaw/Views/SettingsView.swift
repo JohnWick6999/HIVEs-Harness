@@ -12,11 +12,23 @@ struct SettingsView: View {
                 .tabItem { Label("模型", systemImage: "cpu") }
             agentTab($state)
                 .tabItem { Label("Agent", systemImage: "gearshape.2") }
+            memoryTab
+                .tabItem { Label("记忆", systemImage: "brain") }
             aboutTab
                 .tabItem { Label("关于", systemImage: "info.circle") }
         }
-        .frame(width: 460, height: 340)
+        .frame(width: 460, height: 420)
         .padding(16)
+    }
+
+    // MARK: - 记忆管理
+
+    private var memoryTab: some View {
+        MemoryListView()
+            .environment(state)
+            .onAppear {
+                state.loadMemories()
+            }
     }
 
     // MARK: - 模型设置

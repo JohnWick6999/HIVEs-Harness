@@ -214,4 +214,24 @@ final class AppState {
     var availablePersonas: [Persona] {
         personas.listPersonas()
     }
+
+    // MARK: - 记忆管理
+
+    var memories: [MemoryItem] = []
+
+    func loadMemories() {
+        memories = (try? store.listMemories(persona: selectedPersona, kind: "long_term")) ?? []
+    }
+
+    func addMemory(_ content: String) {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try? store.addMemory(persona: selectedPersona, content: trimmed, kind: "long_term")
+        loadMemories()
+    }
+
+    func deleteMemory(_ memory: MemoryItem) {
+        try? store.deleteMemory(id: memory.id)
+        loadMemories()
+    }
 }

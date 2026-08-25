@@ -294,6 +294,23 @@ public final class SQLiteStore: @unchecked Sendable {
         }
     }
 
+    /// 删除单条记忆(记忆管理页用)
+    @discardableResult
+    public func deleteMemory(id: Int64) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM memories WHERE id = ?", -1, &statement, nil) == SQLITE_OK,
+              let statement
+        else {
+            throw StorageError.sqlite(lastErrorMessage())
+        }
+        defer { sqlite3_finalize(statement) }
+        try bind(statement, [.integer(id)])
+        _ = try step(statement)
+        return sqlite3_changes(db) > 0
+    }
+
     /// 余弦相似度检索(原版 search_memories)
     public func searchMemories(query: String, persona: String? = nil, topK: Int = 5) throws -> [MemoryItem] {
         let queryVector = TextEmbedding.hashVector(query)
