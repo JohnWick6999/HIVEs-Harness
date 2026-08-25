@@ -176,6 +176,14 @@ final class AppState {
         try? keychain.setString(apiKey, forKey: "llm.api_key")
     }
 
+    /// 清空当前对话(仅内存,历史仍保留在 checkpoint 中可刷新恢复)
+    func clearMessages() {
+        typingTask?.cancel()
+        typingTask = nil
+        typingPending = ""
+        messages = []
+    }
+
     var availablePersonas: [Persona] {
         personas.listPersonas()
     }
