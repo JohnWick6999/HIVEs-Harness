@@ -33,8 +33,25 @@ final class AppState {
         configStore = ConfigStore(fileURL: base.appendingPathComponent("config.json"))
         keychain = KeychainStore(service: "com.shizukuclaw.app")
         personas = PersonaStore()
-        workspace = base.appendingPathComponent("workspace", isDirectory: true)
+        // 工作区放在用户可见的 Documents/ShizukuClaw/(Application Support 深处用户找不到)
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        workspace = documents.appendingPathComponent("ShizukuClaw", isDirectory: true)
         try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+
+        // 迁移旧工作区文件(Application Support/workspace -> Documents/ShizukuClaw)
+        let legacyWorkspace = base.appendingPathComponent("workspace", isDirectory: true)
+        if FileManager.default.fileExists(atPath: legacyWorkspace.path) {
+            if let legacyFiles = try? FileManager.default.contentsOfDirectory(atPath: legacyWorkspace.path) {
+                for file in legacyFiles {
+                    let src = legacyWorkspace.appendingPathComponent(file)
+                    let dst = workspace.appendingPathComponent(file)
+                    if !FileManager.default.fileExists(atPath: dst.path) {
+                        try? FileManager.default.copyItem(at: src, to: dst)
+                    }
+                }
+            }
+            try? FileManager.default.removeItem(at: legacyWorkspace)
+        }
 
         let loadedConfig = configStore.load()
         config = loadedConfig

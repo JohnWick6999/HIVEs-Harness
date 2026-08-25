@@ -135,6 +135,9 @@ public actor AgentLoop {
 
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
         \(imageHint)
+
+        文件工具(list_dir/read_file/write_file)只能访问工作区目录,无法访问桌面、文稿等系统位置。
+        若用户要求写到桌面或其他目录,将文件写入工作区,并在回复中明确说明文件的实际完整路径。
         """
 
         // 5. 执行工具循环
@@ -214,6 +217,9 @@ public actor AgentLoop {
 
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
         \(imageHint)
+
+        文件工具(list_dir/read_file/write_file)只能访问工作区目录,无法访问桌面、文稿等系统位置。
+        若用户要求写到桌面或其他目录,将文件写入工作区,并在回复中明确说明文件的实际完整路径。
         """
 
         let (reply, traces, engine) = try await runStreamingLoop(
