@@ -7,6 +7,8 @@ struct SkillsSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var selected: Skill?
     @State private var selectedProposal: SkillProposal?
+    @State private var updateStatuses: [String: MarketplaceUpdateStatus] = [:]
+    @State private var checkingUpdates = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +34,14 @@ struct SkillsSettingsView: View {
                 Button("打开目录") {
                     NSWorkspace.shared.open(state.skillsDirectory)
                 }
+                Button(checkingUpdates ? "检查中…" : "检查更新") {
+                    Task {
+                        checkingUpdates = true
+                        updateStatuses = await state.checkAllSkillUpdates()
+                        checkingUpdates = false
+                    }
+                }
+                .disabled(checkingUpdates)
                 Menu("维护") {
                     Button("归档 30 天未用技能") {
                         state.archiveStaleSkills()
@@ -148,6 +158,13 @@ struct SkillsSettingsView: View {
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
                                 .background(.green.opacity(0.12), in: Capsule())
+                        }
+                        if updateStatuses[skill.id]?.isUpdateAvailable == true {
+                            Text("可更新")
+                                .font(.caption2)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(.orange.opacity(0.15), in: Capsule())
                         }
                         if skill.hasHandler {
                             Text("含 handler")

@@ -291,6 +291,13 @@ struct MarketplaceTests {
         SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
+    @Test("更新状态可判断是否可更新")
+    func updateStatusFlag() {
+        #expect(MarketplaceUpdateStatus.available(current: "a", latest: "b").isUpdateAvailable)
+        #expect(!MarketplaceUpdateStatus.upToDate.isUpdateAvailable)
+        #expect(!MarketplaceUpdateStatus.unknown.isUpdateAvailable)
+    }
+
     @Test("GitHub blob SHA-1 校验算法")
     func gitBlobHash() {
         #expect(

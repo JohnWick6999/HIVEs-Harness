@@ -5,6 +5,11 @@ public enum MarketplaceUpdateStatus: Sendable, Equatable {
     case upToDate
     case available(current: String, latest: String)
     case unknown
+
+    public var isUpdateAvailable: Bool {
+        if case .available = self { return true }
+        return false
+    }
 }
 
 public struct MarketplaceInstallFile: Sendable, Equatable {

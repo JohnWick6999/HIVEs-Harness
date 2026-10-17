@@ -690,6 +690,19 @@ final class AppState {
         try await marketplaceInstaller.checkUpdate(for: skill)
     }
 
+    /// 依次检查所有市场安装技能;单个失败标记 unknown,不中断批量检查。
+    func checkAllSkillUpdates() async -> [String: MarketplaceUpdateStatus] {
+        var result: [String: MarketplaceUpdateStatus] = [:]
+        for skill in skills where skill.marketplace != nil {
+            do {
+                result[skill.id] = try await marketplaceInstaller.checkUpdate(for: skill)
+            } catch {
+                result[skill.id] = .unknown
+            }
+        }
+        return result
+    }
+
     func updateSkill(_ skill: Skill) async throws -> [Skill] {
         let installed = try await marketplaceInstaller.update(skill)
         skills = skillStore.all()
