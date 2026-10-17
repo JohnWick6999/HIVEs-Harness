@@ -45,7 +45,6 @@ struct ChatView: View {
                         .padding(.top, 8)
                 }
                 HStack(spacing: 0) {
-                    messageList
                     let turns = ConversationTurnBuilder.build(state.messages)
                     if !turns.isEmpty {
                         ConversationRail(turns: turns) { id in
@@ -54,7 +53,9 @@ struct ChatView: View {
                                 nonce: (scrollRequest?.nonce ?? 0) + 1
                             )
                         }
+                        .zIndex(1)
                     }
+                    messageList
                 }
                 if let question = state.pendingQuestion {
                     HiveQuestionCard(
@@ -518,6 +519,7 @@ struct ChatView: View {
                 .scrollTargetLayout()
             }
             .scrollPosition(id: $scrollPosition, anchor: .top)
+            .background(ScrollbarAutohide())
             .onChange(of: state.messages.last?.content.plainText) {
                 withAnimation {
                     proxy.scrollTo("bottom", anchor: .bottom)
@@ -1040,6 +1042,36 @@ struct ChatView: View {
         pendingAttachments = []
         Task {
             await state.sendStreaming(text, attachments: attachments)
+        }
+    }
+}
+
+// MARK: - 滚动条
+
+/// 让 SwiftUI 底层 NSScrollView 使用 overlay 滚动条并自动隐藏。
+private struct ScrollbarAutohide: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { configure(from: view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { configure(from: nsView) }
+    }
+
+    private func configure(from view: NSView) {
+        var current: NSView? = view.superview
+        while let candidate = current {
+            if let scrollView = candidate as? NSScrollView {
+                scrollView.scrollerStyle = .overlay
+                scrollView.autohidesScrollers = true
+                scrollView.hasVerticalScroller = true
+                scrollView.verticalScroller?.controlSize = .small
+                scrollView.verticalScrollElasticity = .automatic
+                return
+            }
+            current = candidate.superview
         }
     }
 }
