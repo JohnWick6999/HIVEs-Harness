@@ -113,6 +113,7 @@ public final class SQLiteStore: @unchecked Sendable {
                 preview TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
+                archived INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (id, persona)
             );
             CREATE TABLE IF NOT EXISTS runs (
@@ -131,6 +132,12 @@ public final class SQLiteStore: @unchecked Sendable {
         let columns = try queryLocked("PRAGMA table_info(chat_records)")
         if !columns.contains(where: { textValue($0["name"] ?? "") == "thread_id" }) {
             try execLocked("ALTER TABLE chat_records ADD COLUMN thread_id TEXT")
+        }
+
+        // 旧库补齐会话归档字段
+        let sessionColumns = try queryLocked("PRAGMA table_info(sessions)")
+        if !sessionColumns.contains(where: { textValue($0["name"] ?? "") == "archived" }) {
+            try execLocked("ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
         }
 
         // 旧库补齐记忆溯源字段
@@ -670,12 +677,13 @@ public final class SQLiteStore: @unchecked Sendable {
         defer { lock.unlock() }
         _ = try executeLocked(
             """
-            INSERT INTO sessions(id, persona, title, preview, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO sessions(id, persona, title, preview, created_at, updated_at, archived)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id, persona) DO UPDATE SET
                 title=excluded.title,
                 preview=excluded.preview,
-                updated_at=excluded.updated_at
+                updated_at=excluded.updated_at,
+                archived=excluded.archived
             """,
             [
                 .text(session.id),
@@ -684,6 +692,7 @@ public final class SQLiteStore: @unchecked Sendable {
                 .text(session.preview),
                 .text(created),
                 .text(updated),
+                .integer(session.isArchived ? 1 : 0),
             ]
         )
     }
@@ -693,8 +702,8 @@ public final class SQLiteStore: @unchecked Sendable {
         defer { lock.unlock() }
         let rows = try queryLocked(
             """
-            SELECT id, persona, title, preview, created_at, updated_at
-            FROM sessions WHERE persona = ? ORDER BY updated_at DESC
+            SELECT id, persona, title, preview, created_at, updated_at, archived
+            FROM sessions WHERE persona = ? AND archived = 0 ORDER BY updated_at DESC
             """,
             [.text(persona)]
         )
@@ -706,9 +715,47 @@ public final class SQLiteStore: @unchecked Sendable {
                 title: textValue(row["title"] ?? ""),
                 preview: textValue(row["preview"] ?? ""),
                 createdAt: formatter.date(from: textValue(row["created_at"] ?? "")) ?? Date(),
-                updatedAt: formatter.date(from: textValue(row["updated_at"] ?? "")) ?? Date()
+                updatedAt: formatter.date(from: textValue(row["updated_at"] ?? "")) ?? Date(),
+                isArchived: textValue(row["archived"] ?? "") == "1"
             )
         }
+    }
+
+    public func listArchivedSessions(persona: String) throws -> [SessionRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(
+            """
+            SELECT id, persona, title, preview, created_at, updated_at, archived
+            FROM sessions WHERE persona = ? AND archived = 1 ORDER BY updated_at DESC
+            """,
+            [.text(persona)]
+        )
+        let formatter = ISO8601DateFormatter()
+        return rows.map { row in
+            SessionRecord(
+                id: textValue(row["id"] ?? ""),
+                persona: textValue(row["persona"] ?? ""),
+                title: textValue(row["title"] ?? ""),
+                preview: textValue(row["preview"] ?? ""),
+                createdAt: formatter.date(from: textValue(row["created_at"] ?? "")) ?? Date(),
+                updatedAt: formatter.date(from: textValue(row["updated_at"] ?? "")) ?? Date(),
+                isArchived: true
+            )
+        }
+    }
+
+    public func setSessionArchived(
+        threadID: String,
+        persona: String,
+        archived: Bool
+    ) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            "UPDATE sessions SET archived = ?, updated_at = ? WHERE id = ? AND persona = ?",
+            [.integer(archived ? 1 : 0), .text(now()), .text(threadID), .text(persona)]
+        )
     }
 
     /// 删除会话及其 checkpoint、任务计划、上下文状态与聊天记录。

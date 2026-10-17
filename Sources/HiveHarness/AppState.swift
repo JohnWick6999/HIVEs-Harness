@@ -31,6 +31,7 @@ final class AppState {
     var pendingQuestion: ClarificationRequest?
     /// 当前人格下的会话列表
     var sessions: [SessionRecord] = []
+    var archivedSessions: [SessionRecord] = []
     /// 当前会话 id
     var currentThreadID: String = ""
     /// 撤销后回填到输入框的草稿
@@ -267,6 +268,7 @@ final class AppState {
             list = [record]
         }
         sessions = list
+        archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? []
         if let first = list.first {
             currentThreadID = first.id
         }
@@ -281,6 +283,7 @@ final class AppState {
         )
         try? store.upsertSession(record)
         sessions = (try? store.listSessions(persona: selectedPersona)) ?? [record]
+        archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? archivedSessions
         currentThreadID = record.id
         messages = []
         taskPlan = .empty
@@ -296,6 +299,69 @@ final class AppState {
         lastToolTrace = []
         lastFileChanges = []
         loadHistory()
+    }
+
+    /// 重命名会话(归档会话也可重命名)。
+    func renameSession(_ id: String, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard var record = (sessions + archivedSessions).first(where: { $0.id == id }) else { return }
+        record.title = String(trimmed.prefix(80))
+        record.updatedAt = Date()
+        try? store.upsertSession(record)
+        refreshSessionLists()
+    }
+
+    /// 归档会话:数据保留,移出主列表;归档当前会话时自动切到下一个。
+    func archiveSession(_ id: String) {
+        guard sessions.contains(where: { $0.id == id }) else { return }
+        try? store.setSessionArchived(threadID: id, persona: selectedPersona, archived: true)
+        if id == currentThreadID {
+            let remaining = (try? store.listSessions(persona: selectedPersona)) ?? []
+            if let next = remaining.first {
+                currentThreadID = next.id
+                loadHistory()
+            } else {
+                newSession()
+            }
+        }
+        refreshSessionLists()
+    }
+
+    /// 恢复归档会话并切换到它。
+    func unarchiveSession(_ id: String) {
+        guard archivedSessions.contains(where: { $0.id == id }) else { return }
+        try? store.setSessionArchived(threadID: id, persona: selectedPersona, archived: false)
+        refreshSessionLists()
+        selectSession(id)
+    }
+
+    /// 删除指定会话(当前会话被删除时自动切换)。
+    func deleteSession(_ id: String) {
+        try? store.deleteSession(threadID: id, persona: selectedPersona)
+        if id == currentThreadID {
+            let remaining = (try? store.listSessions(persona: selectedPersona)) ?? []
+            if let next = remaining.first {
+                currentThreadID = next.id
+                loadHistory()
+            } else {
+                newSession()
+            }
+        }
+        refreshSessionLists()
+    }
+
+    private func refreshSessionLists() {
+        sessions = (try? store.listSessions(persona: selectedPersona)) ?? []
+        archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? []
+        if sessions.isEmpty {
+            newSession()
+            return
+        }
+        if !sessions.contains(where: { $0.id == currentThreadID }) {
+            currentThreadID = sessions[0].id
+            loadHistory()
+        }
     }
 
     /// 复制当前可见消息到独立会话(重新生成消息 id)。
@@ -330,6 +396,7 @@ final class AppState {
         )
         try? store.upsertSession(record)
         sessions = (try? store.listSessions(persona: selectedPersona)) ?? [record]
+        archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? archivedSessions
         currentThreadID = target
         loadHistory()
     }
@@ -368,15 +435,7 @@ final class AppState {
     }
 
     func deleteCurrentSession() {
-        let deleting = currentThreadID
-        try? store.deleteSession(threadID: deleting, persona: selectedPersona)
-        sessions = (try? store.listSessions(persona: selectedPersona)) ?? []
-        if let first = sessions.first {
-            currentThreadID = first.id
-            loadHistory()
-        } else {
-            newSession()
-        }
+        deleteSession(currentThreadID)
     }
 
     /// 更新会话标题/预览与最近时间。
@@ -408,6 +467,7 @@ final class AppState {
         try? store.upsertSession(record)
         if persona == selectedPersona {
             sessions = (try? store.listSessions(persona: persona)) ?? sessions
+            archivedSessions = (try? store.listArchivedSessions(persona: persona)) ?? archivedSessions
         }
     }
 

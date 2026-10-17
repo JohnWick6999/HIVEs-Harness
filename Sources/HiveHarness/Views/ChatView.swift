@@ -141,7 +141,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(.ultraThinMaterial)
+        .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.025))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(HiveTheme.hairline)
@@ -519,11 +519,7 @@ struct ChatView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(11)
-                        .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(HiveTheme.hairline, lineWidth: 1)
-                        )
+                        .hiveGlass(corner: 12, tint: HiveTheme.amber.opacity(0.025), interactive: true)
                     }
                     .buttonStyle(.plain)
                 }
@@ -630,7 +626,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.02))
     }
 
     // MARK: - AI 用量
@@ -682,7 +678,7 @@ struct ChatView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
+        .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.015))
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(HiveTheme.hairline)
@@ -854,23 +850,16 @@ struct MessageRow: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .hiveGlass(corner: 10, tint: HiveTheme.amber.opacity(0.025))
     }
 
     private func bubble(text: String, isUser: Bool) -> some View {
         bubbleContent(text, isUser: isUser)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(
-                isUser ? HiveTheme.userBubble : HiveTheme.assistantBubble,
-                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(
-                        isUser ? HiveTheme.amber.opacity(0.20) : HiveTheme.hairline,
-                        lineWidth: 1
-                    )
+            .hiveGlass(
+                corner: 14,
+                tint: isUser ? HiveTheme.amber.opacity(0.07) : Color.white.opacity(0.018)
             )
     }
 
@@ -907,7 +896,7 @@ struct MessageRow: View {
                             }
                             .padding(.horizontal, 9)
                             .padding(.vertical, 6)
-                            .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .hiveGlass(corner: 8, tint: HiveTheme.amber.opacity(0.025), interactive: true)
                         }
                         .buttonStyle(.plain)
 
