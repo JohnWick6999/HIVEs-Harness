@@ -59,9 +59,11 @@ enum HiveAppearance: String, CaseIterable, Identifiable {
 /// 柔和背景:窗口底色 + 左上暖光 + 右下冷光。
 struct HiveBackground: View {
     @AppStorage(HiveTheme.glassIntensityKey) private var glassIntensity = HiveTheme.defaultGlassIntensity
+    @Environment(\.colorScheme) private var colorScheme
 
     private var aurora: Double {
-        0.55 + min(1, max(0, glassIntensity)) * 0.9
+        let base = 0.55 + min(1, max(0, glassIntensity)) * 0.9
+        return colorScheme == .dark ? base * 0.52 : base
     }
 
     var body: some View {
@@ -92,10 +94,13 @@ struct HiveBackground: View {
                 endRadius: 460
             )
             LinearGradient(
-                colors: [.white.opacity(0.035), .clear, .black.opacity(0.025)],
+                colors: [.white.opacity(colorScheme == .dark ? 0.018 : 0.035), .clear, .black.opacity(0.025)],
                 startPoint: .top,
                 endPoint: .bottom
             )
+            if colorScheme == .dark {
+                Color.black.opacity(0.08)
+            }
         }
         .ignoresSafeArea()
     }
@@ -138,20 +143,30 @@ struct HiveGlassModifier: ViewModifier {
     var interactive: Bool
 
     @AppStorage(HiveTheme.glassIntensityKey) private var glassIntensity = HiveTheme.defaultGlassIntensity
+    @Environment(\.colorScheme) private var colorScheme
 
     private var strength: Double { min(1, max(0, glassIntensity)) }
+    private var isDark: Bool { colorScheme == .dark }
+    /// 深色下白色高光必须大幅衰减,否则正文对比度会被玻璃吃掉。
+    private var whiteScale: Double { isDark ? 0.32 : 1.0 }
+    private var darkBase: Double { isDark ? 0.14 + strength * 0.12 : 0 }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
             let glass: Glass = {
                 var value = Glass.regular
-                if let tint { value = value.tint(tint) }
+                if isDark {
+                    value = value.tint(.black.opacity(0.18))
+                } else if let tint {
+                    value = value.tint(tint)
+                }
                 if interactive { value = value.interactive() }
                 return value
             }()
             let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content
+                .background(Color.black.opacity(darkBase), in: shape)
                 .glassEffect(glass, in: shape)
                 .overlay {
                     ZStack {
@@ -159,9 +174,9 @@ struct HiveGlassModifier: ViewModifier {
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        .white.opacity(0.05 + strength * 0.16),
-                                        .white.opacity(0.02),
-                                        HiveTheme.amber.opacity(0.02 + strength * 0.035),
+                                        .white.opacity((0.05 + strength * 0.16) * whiteScale),
+                                        .white.opacity(0.02 * whiteScale),
+                                        HiveTheme.amber.opacity((0.02 + strength * 0.035) * (isDark ? 0.45 : 1)),
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -172,8 +187,8 @@ struct HiveGlassModifier: ViewModifier {
                         shape.stroke(
                             LinearGradient(
                                 colors: [
-                                    .white.opacity(0.16 + strength * 0.28),
-                                    .white.opacity(0.06),
+                                    .white.opacity((0.16 + strength * 0.28) * whiteScale),
+                                    .white.opacity(0.06 * whiteScale),
                                     .black.opacity(0.10),
                                 ],
                                 startPoint: .topLeading,
@@ -183,7 +198,7 @@ struct HiveGlassModifier: ViewModifier {
                         )
                         .allowsHitTesting(false)
                         shape
-                            .fill(Color.white.opacity(0.005 + strength * 0.035))
+                            .fill(Color.white.opacity((0.005 + strength * 0.035) * whiteScale))
                             .blendMode(.plusLighter)
                             .allowsHitTesting(false)
                     }
@@ -193,9 +208,14 @@ struct HiveGlassModifier: ViewModifier {
             let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content
                 .background(.ultraThinMaterial, in: shape)
+                .background(Color.black.opacity(darkBase), in: shape)
                 .background(
                     LinearGradient(
-                        colors: [.white.opacity(0.04 + strength * 0.12), .clear, HiveTheme.amber.opacity(0.025 + strength * 0.03)],
+                        colors: [
+                            .white.opacity((0.04 + strength * 0.12) * whiteScale),
+                            .clear,
+                            HiveTheme.amber.opacity((0.025 + strength * 0.03) * (isDark ? 0.4 : 1)),
+                        ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
@@ -206,7 +226,11 @@ struct HiveGlassModifier: ViewModifier {
                         shape
                             .fill(
                                 LinearGradient(
-                                    colors: [.white.opacity(0.05 + strength * 0.14), .clear, HiveTheme.amber.opacity(0.02 + strength * 0.03)],
+                                    colors: [
+                                        .white.opacity((0.05 + strength * 0.14) * whiteScale),
+                                        .clear,
+                                        HiveTheme.amber.opacity((0.02 + strength * 0.03) * (isDark ? 0.4 : 1)),
+                                    ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
@@ -215,7 +239,7 @@ struct HiveGlassModifier: ViewModifier {
                         shape.stroke(
                             LinearGradient(
                                 colors: [
-                                    .white.opacity(0.15 + strength * 0.30),
+                                    .white.opacity((0.15 + strength * 0.30) * whiteScale),
                                     HiveTheme.hairline,
                                     .black.opacity(0.12 + strength * 0.04),
                                 ],
@@ -225,7 +249,7 @@ struct HiveGlassModifier: ViewModifier {
                             lineWidth: 0.9
                         )
                         shape
-                            .fill(Color.white.opacity(0.004 + strength * 0.032))
+                            .fill(Color.white.opacity((0.004 + strength * 0.032) * whiteScale))
                             .blendMode(.plusLighter)
                     }
                 }
