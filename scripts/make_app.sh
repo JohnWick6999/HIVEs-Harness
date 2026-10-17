@@ -32,5 +32,17 @@ if [ -d "$RESOURCE_BUNDLE" ]; then
   cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
 fi
 
+# 稳定签名:同一证书能让 TCC/钥匙串授权跨构建保留。
+CERT_NAME="HIVE's Harness Local Signing"
+if security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$CERT_NAME"; then
+  codesign --force --deep --sign "$CERT_NAME" --identifier com.hiveharness.app "$APP" >/dev/null
+  codesign --verify --deep --strict "$APP"
+  echo "🔐 已用稳定身份签名: $CERT_NAME"
+else
+  echo "⚠️ 未找到本地稳定签名身份,本次使用 ad-hoc 签名(每次构建都会重新授权)。"
+  echo "   运行 scripts/setup_signing.sh 一次即可解决。"
+  codesign --force --deep --sign - --identifier com.hiveharness.app "$APP" >/dev/null
+fi
+
 echo "✅ 已生成 $APP"
 echo "启动: open $APP"

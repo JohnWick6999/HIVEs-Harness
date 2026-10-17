@@ -271,6 +271,24 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 
 悬停打开行级 diff(新增/删除/上下文),点击徽章固定或关闭。
 
+## 🔐 权限与签名(重要)
+
+macOS 的文档目录 TCC 与钥匙串 ACL 都绑定 **App 的代码签名身份**。之前 `.app` 使用 ad-hoc 签名,每次重建哈希都变,macOS 会把新构建当成另一个 App,所以“始终允许”不会继承。
+
+一次性修复:
+
+```bash
+scripts/setup_signing.sh
+scripts/make_app.sh
+open build/HiveHarness.app
+```
+
+- `setup_signing.sh` 创建本机自签名身份 `HIVE's Harness Local Signing`
+- 私钥/证书保存在 `~/Library/Application Support/HiveHarness/signing/`,权限 600,不进入仓库
+- 之后每次 `make_app.sh` 都用同一身份签名
+- 首次访问文档目录和钥匙串时各点一次“始终允许”,后续重启/重建不再重复
+- 更换签名身份后,系统会要求重新授权一次;数据本身不变
+
 ## 🛠️ 首次使用
 
 1. 打开 App → 设置 → 模型,填写 Base URL、模型名与 API Key(Keychain 存储)。
