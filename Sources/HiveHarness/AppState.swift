@@ -53,6 +53,8 @@ final class AppState {
     let mcpDirectory: URL
     let skillsDirectory: URL
     let personasDirectory: URL
+    let pluginStudio: PluginAuthoringService
+    var pluginProjects: [PluginProject] = []
     private let configStore: ConfigStore
     private let keychain: KeychainStore
     private let personas: PersonaStore
@@ -95,6 +97,10 @@ final class AppState {
         workspace = ws
         workspaceService = WorkspaceService(root: ws)
         try? fm.createDirectory(at: ws, withIntermediateDirectories: true)
+
+        // 插件工坊:~/Documents/HiveHarness/plugin-studio/<id>/
+        let studioRoot = ws.appendingPathComponent("plugin-studio", isDirectory: true)
+        pluginStudio = PluginAuthoringService(root: studioRoot)
 
         // 用户人格目录:~/Documents/HiveHarness/personas/<id>.json
         let personaDir = ws.appendingPathComponent("personas", isDirectory: true)
@@ -161,6 +167,7 @@ final class AppState {
         }
         skills = skillStore.all()
         skillProposals = skillEvolver.proposals()
+        pluginProjects = pluginStudio.listProjects()
 
         if config.gateway.enabled {
             Task { [weak self] in
@@ -847,6 +854,59 @@ final class AppState {
                 self.errorMessage = "已生成技能提案: \(proposal.name)(在设置 → 技能中批准)"
             }
         }
+    }
+
+    // MARK: - 插件工坊
+
+    func reloadPluginProjects() {
+        pluginProjects = pluginStudio.listProjects()
+    }
+
+    func createPlugin(name: String, template: PluginTemplate) throws -> PluginProject {
+        let project = try pluginStudio.create(name: name, template: template)
+        reloadPluginProjects()
+        return project
+    }
+
+    func savePluginFile(
+        _ project: PluginProject,
+        path: String,
+        content: String
+    ) throws -> PluginProject? {
+        try pluginStudio.writeFile(project: project, path: path, content: content)
+        let refreshed = pluginStudio.refresh(project: project)
+        reloadPluginProjects()
+        return refreshed
+    }
+
+    func validatePlugin(_ project: PluginProject) -> PluginValidationReport {
+        pluginStudio.validate(project: project)
+    }
+
+    func installPlugin(_ project: PluginProject) throws -> [Skill] {
+        let installed = try pluginStudio.install(
+            project: project,
+            skillStore: skillStore,
+            mcpDirectory: mcpDirectory
+        )
+        reloadSkills()
+        Task { await reloadMCPConfigs() }
+        return installed
+    }
+
+    func exportPlugin(_ project: PluginProject) throws -> Data {
+        try pluginStudio.exportBundle(project: project)
+    }
+
+    func importPlugin(data: Data) throws -> PluginProject {
+        let project = try pluginStudio.importBundle(data: data)
+        reloadPluginProjects()
+        return project
+    }
+
+    func deletePlugin(_ project: PluginProject) throws {
+        try pluginStudio.deleteProject(id: project.id)
+        reloadPluginProjects()
     }
 
     // MARK: - AI 用量

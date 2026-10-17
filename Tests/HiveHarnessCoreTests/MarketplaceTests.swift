@@ -90,6 +90,38 @@ struct MarketplaceTests {
         #expect(MarketplaceLinkParser.parse("https://example.com/x") == nil)
     }
 
+    @Test("链接解析:tree / blob / raw 子路径")
+    func linkSubpathParsing() {
+        #expect(
+            MarketplaceLinkParser.parse("https://github.com/acme/tools/tree/dev/skills/foo")
+                == .github(owner: "acme", repo: "tools", ref: "dev")
+        )
+        #expect(
+            MarketplaceLinkParser.installPath("https://github.com/acme/tools/tree/dev/skills/foo")
+                == "skills/foo"
+        )
+        #expect(
+            MarketplaceLinkParser.installPath("https://github.com/acme/tools/blob/dev/skills/foo/SKILL.md")
+                == "skills/foo"
+        )
+        #expect(
+            MarketplaceLinkParser.installPath("https://raw.githubusercontent.com/acme/tools/dev/skills/foo/SKILL.md")
+                == "skills/foo"
+        )
+        #expect(
+            MarketplaceLinkParser.installPath("https://raw.githubusercontent.com/acme/tools/dev/plugin.json")
+                == nil
+        )
+        #expect(
+            MarketplaceLinkParser.installPath("https://github.com/acme/tools/blob/dev/.claude-plugin/plugin.json")
+                == nil
+        )
+        #expect(
+            MarketplaceLinkParser.parse("https://raw.githubusercontent.com/acme/tools/dev/skills/foo/SKILL.md")
+                == .github(owner: "acme", repo: "tools", ref: "dev")
+        )
+    }
+
     @Test("ModelScope JSON 多外壳解析")
     func modelScopeParsing() {
         let data = Data(
@@ -704,5 +736,24 @@ struct MarketplaceTests {
         let item = try await service.importLink("https://github.com/acme/skills")
         #expect(item.id == "github:acme/skills")
         #expect(item.stars == 7)
+    }
+
+    @Test("导入 GitHub 子目录链接时限定安装路径")
+    func importSubpath() async throws {
+        MarketplaceMockURLProtocol.handler = { request in
+            httpJSON(request, [
+                "name": "skills",
+                "full_name": "acme/skills",
+                "description": "acme skills",
+                "stargazers_count": 7,
+                "default_branch": "main",
+                "html_url": "https://github.com/acme/skills",
+                "owner": ["login": "acme"],
+            ])
+        }
+        let service = MarketplaceService(session: marketplaceSession())
+        let item = try await service.importLink("https://github.com/acme/skills/tree/main/skills/foo")
+        #expect(item.installPath == "skills/foo")
+        #expect(item.name == "foo")
     }
 }

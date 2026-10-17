@@ -205,6 +205,22 @@ struct MCPHTTPTests {
         #expect(Set(reloaded.map(\.id)) == ["alpha", "beta"])
     }
 
+    @Test("兼容 Claude mcpServers 对象格式")
+    func claudeConfigFormat() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hive-claude-mcp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let json = """
+        {"mcpServers":{"demo":{"command":"npx","args":["-y","demo-mcp"],"disabled":true},
+        "remote":{"url":"https://example.com/mcp","headers":{"Authorization":"Bearer x"}}}}
+        """
+        try json.write(to: dir.appendingPathComponent("servers.json"), atomically: true, encoding: .utf8)
+        let configs = MCPConfigLoader.load(directory: dir)
+        #expect(configs.count == 2)
+        #expect(configs.first { $0.id == "demo" }?.enabled == false)
+        #expect(configs.first { $0.id == "remote" }?.type == "http")
+    }
+
     @Test("工具适配器名称带服务器前缀,调用仍用远程名")
     func adapterPrefix() async throws {
         MCPMockURLProtocol.handler = { request in

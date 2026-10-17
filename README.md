@@ -151,6 +151,7 @@ open build/HiveHarness.app
 | 归档技能 | `~/Documents/HiveHarness/skills/_archive/<id>/` |
 | 技能历史版本 | `~/Documents/HiveHarness/skills/_versions/<id>/<timestamp>/` |
 | 技能操作审计 | `~/Documents/HiveHarness/skills/_ledger.jsonl` |
+| 插件工坊项目 | `~/Documents/HiveHarness/plugin-studio/<id>/` |
 | API Key | 钥匙串(`com.hiveharness.app`) |
 
 首次启动会自动迁移旧 `ShizukuClaw` 数据目录与钥匙串项。
@@ -171,7 +172,41 @@ open build/HiveHarness.app
 }
 ```
 
-支持 stdio 与 Streamable HTTP;`mcp__<server>__<tool>` 仅在完全控制模式 + 审批后执行。
+支持 stdio 与 Streamable HTTP;也兼容 Claude / VS Code 的 `{"mcpServers": {...}}` 对象格式。`mcp__<server>__<tool>` 仅在完全控制模式 + 审批后执行。
+
+## 🧪 插件工坊(声明式)
+
+顶栏 🏪 → **插件工坊**,不需要写 Swift/JS,直接声明插件包含什么:
+
+```text
+plugin-studio/<id>/
+├── plugin.json          # 清单:名称/版本/作者/skills/MCP
+├── README.md
+└── skills/<id>/SKILL.md # 工作流
+```
+
+- 模板:**技能包**、**MCP 连接器**、**技能 + MCP**
+- 编辑 `plugin.json` / `SKILL.md` → **校验** → **安装** → **导出 `.hiveplugin.json`**
+- 安装时只写 `SKILL.md` 与 MCP 配置;MCP 默认停用,必须人工审查
+- `commands` / `hooks` 仅兼容展示,不执行;插件中的脚本不会运行
+- 支持本地导入 `.hiveplugin.json`,可分享给其他人
+
+### 兼容层
+
+| 输入 | 支持 |
+|---|---|
+| HIVE `plugin.json` | ✅ 原生 |
+| Claude `.claude-plugin/plugin.json` | ✅ 解析 author 对象、skills、mcpServers |
+| Claude `marketplace.json` | ✅ 展开子插件 |
+| MCP `mcp.json` / `.mcp.json` / `server.json` | ✅ |
+| Claude/VS Code `mcpServers` 对象 | ✅ 自动转换 |
+| GitHub repo / `tree` / `blob` / `raw` 链接 | ✅ 自动限定子目录 |
+| ModelScope skills 链接 | ✅ |
+| GitLab / Gitee / npm 包 / DSH Cordis 代码插件 | ⏳ 暂不执行代码插件 |
+
+> DSH 的 Creator mode 本质是 Cordis/TypeScript 代码插件(见 [DSH Plugins](https://github.com/deepseek-ai/deepseek-harness));直接执行第三方代码不适合本地 Swift Agent。HIVE 工坊只生成可审计的声明式插件,这是有意取舍。
+
+设计参考:[DSH plugin market](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/plugin-market.md)、[DSH bundle publish](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.md)、[Claude plugin reference](https://code.claude.com/docs/en/plugins-reference)、[Vercel Agent Plugins](https://vercel.com/blog/introducing-agent-plugins)、[MCP Registry server.json](https://github.com/modelcontextprotocol/registry)。
 
 ## 🏪 插件市场 / 自进化 / 运行日志
 
@@ -206,7 +241,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 163 tests in 33 suites passed
+# 172 tests in 34 suites passed
 ```
 
 ## 🔄 与旧版的关系

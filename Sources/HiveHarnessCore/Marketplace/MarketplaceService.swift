@@ -167,11 +167,14 @@ public actor MarketplaceService {
         switch link {
         case let .github(owner, repo, ref):
             let repository = try await github.repository(owner: owner, repo: repo)
+            let subpath = MarketplaceLinkParser.installPath(raw)
             let url = ref.map { "https://github.com/\(owner)/\(repo)/tree/\($0)" }
                 ?? "https://github.com/\(owner)/\(repo)"
+            let name = subpath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? repo
             return MarketplaceItem(
-                id: "github:\(owner)/\(repo)".lowercased(),
-                name: repo,
+                id: "github:\(owner)/\(repo)".lowercased()
+                    + (subpath.map { "#\($0)" } ?? ""),
+                name: name,
                 summary: repository.description,
                 author: owner,
                 source: .github,
@@ -181,7 +184,8 @@ public actor MarketplaceService {
                 license: repository.license,
                 homepage: repository.htmlURL,
                 installURL: url,
-                iconURL: repository.avatarURL
+                iconURL: repository.avatarURL,
+                installPath: subpath
             )
         case .modelScopeSkill:
             guard let item = try await modelScope.resolve(link: link) else {

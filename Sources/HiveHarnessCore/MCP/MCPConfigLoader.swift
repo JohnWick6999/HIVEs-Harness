@@ -12,11 +12,30 @@ public enum MCPConfigLoader {
         var seen = Set<String>()
 
         let serversURL = directory.appendingPathComponent("servers.json")
-        if let data = try? Data(contentsOf: serversURL),
-           let payload = try? JSONDecoder().decode(ServersPayload.self, from: data) {
-            for var config in payload.servers {
-                if config.name.isEmpty { config.name = config.id }
-                if seen.insert(config.id).inserted { result.append(config) }
+        if let data = try? Data(contentsOf: serversURL) {
+            if let payload = try? JSONDecoder().decode(ServersPayload.self, from: data) {
+                for var config in payload.servers {
+                    if config.name.isEmpty { config.name = config.id }
+                    if seen.insert(config.id).inserted { result.append(config) }
+                }
+            } else if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let servers = object["mcpServers"] as? [String: Any] {
+                // Claude / VS Code 兼容:{"mcpServers": {"name": {...}}}
+                for (key, value) in servers.sorted(by: { $0.key < $1.key }) {
+                    guard let dict = value as? [String: Any],
+                          let valueData = try? JSONSerialization.data(withJSONObject: dict),
+                          var config = try? JSONDecoder().decode(MCPServerConfig.self, from: valueData)
+                    else { continue }
+                    config.id = key
+                    if config.name.isEmpty { config.name = key }
+                    if config.command.isEmpty && !config.url.isEmpty {
+                        config.type = "http"
+                    }
+                    if let disabled = dict["disabled"] as? Bool {
+                        config.enabled = !disabled
+                    }
+                    if seen.insert(config.id).inserted { result.append(config) }
+                }
             }
         }
 

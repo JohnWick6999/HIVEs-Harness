@@ -18,6 +18,7 @@ struct MarketplaceView: View {
     @State private var selected: MarketplaceItem?
     @State private var showImport = false
     @State private var showToken = false
+    @State private var showStudio = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,6 +51,10 @@ struct MarketplaceView: View {
         .sheet(isPresented: $showToken) {
             tokenSheet
         }
+        .sheet(isPresented: $showStudio) {
+            PluginStudioView()
+                .environment(state)
+        }
     }
 
     // MARK: - 头部
@@ -72,6 +77,7 @@ struct MarketplaceView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 260)
+            Button("插件工坊") { showStudio = true }
             Button("导入链接") { showImport = true }
             Button {
                 showToken = true

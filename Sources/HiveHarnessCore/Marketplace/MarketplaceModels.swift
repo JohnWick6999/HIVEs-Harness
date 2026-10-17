@@ -172,10 +172,18 @@ public enum MarketplaceLinkParser {
             var repo = parts[1]
             if repo.hasSuffix(".git") { repo.removeLast(4) }
             var ref: String?
-            if parts.count >= 4, parts[2] == "tree" {
+            if parts.count >= 4, parts[2] == "tree" || parts[2] == "blob" {
                 ref = parts[3]
             }
             return .github(owner: owner, repo: repo, ref: ref)
+        }
+
+        // raw 文件链接:raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+        if host == "raw.githubusercontent.com" {
+            guard parts.count >= 4 else { return nil }
+            var repo = parts[1]
+            if repo.hasSuffix(".git") { repo.removeLast(4) }
+            return .github(owner: parts[0], repo: repo, ref: parts[2])
         }
 
         if host == "modelscope.cn" || host == "www.modelscope.cn" {
@@ -193,6 +201,50 @@ public enum MarketplaceLinkParser {
             }
         }
         return nil
+    }
+
+    /// GitHub tree/blob/raw 链接中的子目录;文件链接返回其父目录。
+    public static func installPath(_ raw: String) -> String? {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.contains("://") { text = "https://" + text }
+        guard let components = URLComponents(string: text),
+              let host = components.host?.lowercased()
+        else { return nil }
+        let parts = components.path.split(separator: "/").map(String.init)
+
+        if host == "github.com" || host == "www.github.com" {
+            guard parts.count >= 3, parts[2] == "tree" || parts[2] == "blob" else { return nil }
+            guard parts.count > 4 else { return nil }
+            let path = parts.dropFirst(4).joined(separator: "/")
+            return fileAwarePath(path)
+        }
+        if host == "raw.githubusercontent.com" {
+            guard parts.count > 4 else { return nil }
+            return fileAwarePath(parts.dropFirst(3).joined(separator: "/"))
+        }
+        return nil
+    }
+
+    private static func fileAwarePath(_ path: String) -> String? {
+        let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty else { return nil }
+        let last = URL(fileURLWithPath: trimmed).lastPathComponent
+        // plugin.json 在 .claude-plugin/ 下时,技能通常在仓库根
+        if trimmed == ".claude-plugin/plugin.json" { return nil }
+        if trimmed.hasSuffix("plugin.json") || trimmed.hasSuffix("marketplace.json") {
+            return parentPath(trimmed)
+        }
+        if last.contains(".") {
+            return parentPath(trimmed)
+        }
+        return trimmed
+    }
+
+    private static func parentPath(_ path: String) -> String? {
+        let parts = path.split(separator: "/")
+        guard parts.count > 1 else { return nil }
+        return parts.dropLast().joined(separator: "/")
     }
 }
 
