@@ -39,6 +39,35 @@ struct ClarificationTests {
         #expect(result.text.contains("用户补充: 需要 macOS 原生"))
     }
 
+    @Test("一次提交多个问题并逐题回填")
+    func batchQuestions() async throws {
+        let box = ClarificationBox()
+        let tool = AskUserTool(handler: { request in
+            box.append(request)
+            return ClarificationAnswer(answers: [
+                ClarificationQuestionAnswer(selected: ["Swift"], freeform: nil),
+                ClarificationQuestionAnswer(selected: [], freeform: "先做 CLI"),
+            ])
+        })
+        let result = try await tool.run(arguments: [
+            "questions": AnyCodable([
+                [
+                    "question": "用哪种语言?",
+                    "options": [["label": "Swift", "recommended": true], ["label": "Rust"]],
+                ],
+                [
+                    "question": "先做哪个界面?",
+                    "allow_freeform": true,
+                ],
+            ]),
+        ])
+        #expect(box.all.count == 1)
+        #expect(box.all.first?.questions.count == 2)
+        #expect(result.text.contains("问题 1: 用哪种语言?"))
+        #expect(result.text.contains("用户选择: Swift"))
+        #expect(result.text.contains("用户补充: 先做 CLI"))
+    }
+
     @Test("提问预算与重复问题会被拦截")
     func budgetAndDedup() async throws {
         let box = ClarificationBox()
