@@ -238,7 +238,10 @@ public actor AgentLoop {
 
         [任务计划]
         多步骤执行任务开始时使用 todowrite 创建具体任务列表,只将当前步骤标为 in_progress,每完成一个步骤就更新。
-        验证后才标为 completed。中断或失败时保留未完成状态,不要虚报完成;简单问答不需要计划。\(planSection)
+        验证后才标为 completed。中断或失败时保留未完成状态,不要虚报完成;简单问答不需要计划。
+
+        [技能]
+        需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先调用 list_skills 查看,再用 run_skill 加载对应指令后执行。\(planSection)
         """
     }
 

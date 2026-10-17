@@ -28,16 +28,20 @@ final class AppState {
     var currentThreadID: String = ""
     /// 撤销后回填到输入框的草稿
     var pendingDraft: String?
+    /// 已安装技能(内置 + 用户)
+    var skills: [Skill] = []
 
     // MARK: - 依赖
 
     let store: SQLiteStore
     let workspace: URL
     let mcpDirectory: URL
+    let skillsDirectory: URL
     private let configStore: ConfigStore
     private let keychain: KeychainStore
     private let personas: PersonaStore
     private let mcpRegistry: MCPRegistry
+    let skillStore: SkillStore
 
     // MARK: - 审批内部状态
 
@@ -67,6 +71,12 @@ final class AppState {
         mcpDirectory = mcpDir
         mcpRegistry = MCPRegistry(configs: MCPConfigLoader.load(directory: mcpDir))
 
+        // 用户技能目录:~/Documents/ShizukuClaw/skills/<id>/SKILL.md
+        let skillsDir = ws.appendingPathComponent("skills", isDirectory: true)
+        try? FileManager.default.createDirectory(at: skillsDir, withIntermediateDirectories: true)
+        skillsDirectory = skillsDir
+        skillStore = SkillStore(userDirectory: skillsDir)
+
         // 迁移旧工作区文件(Application Support/workspace -> Documents/ShizukuClaw)
         let legacyWorkspace = base.appendingPathComponent("workspace", isDirectory: true)
         if FileManager.default.fileExists(atPath: legacyWorkspace.path) {
@@ -93,6 +103,7 @@ final class AppState {
         store = try! SQLiteStore(path: base.appendingPathComponent("agent.db").path)
 
         loadSessions()
+        skills = skillStore.all()
     }
 
     var threadID: String {
@@ -363,7 +374,7 @@ final class AppState {
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
             },
-            extraTools: mcpTools
+            extraTools: mcpTools + skillTools
         )
         do {
             let result = try await loop.invoke(
@@ -432,7 +443,7 @@ final class AppState {
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
             },
-            extraTools: mcpTools
+            extraTools: mcpTools + skillTools
         )
         do {
             for try await event in await loop.stream(
@@ -559,6 +570,32 @@ final class AppState {
     func reloadMCPConfigs() async {
         let configs = MCPConfigLoader.load(directory: mcpDirectory)
         await mcpRegistry.reload(configs: configs)
+    }
+
+    // MARK: - 技能
+
+    private var skillTools: [any Tool] {
+        [
+            SkillTools.ListSkillsTool(store: skillStore),
+            SkillTools.RunSkillTool(store: skillStore),
+        ]
+    }
+
+    func reloadSkills() {
+        skillStore.reload()
+        skills = skillStore.all()
+    }
+
+    func setSkillEnabled(_ id: String, enabled: Bool) {
+        skillStore.setEnabled(enabled, id: id)
+        skills = skillStore.all()
+    }
+
+    @discardableResult
+    func installSkill(from url: URL) throws -> Skill {
+        let skill = try skillStore.install(from: url)
+        skills = skillStore.all()
+        return skill
     }
 
     /// 清空当前对话(仅内存,历史仍保留在 checkpoint 中可刷新恢复)

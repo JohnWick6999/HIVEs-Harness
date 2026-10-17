@@ -14,6 +14,8 @@ struct SettingsView: View {
                 .tabItem { Label("Agent", systemImage: "gearshape.2") }
             MCPSettingsView()
                 .tabItem { Label("MCP", systemImage: "server.rack") }
+            SkillsSettingsView()
+                .tabItem { Label("技能", systemImage: "wand.and.stars") }
             memoryTab
                 .tabItem { Label("记忆", systemImage: "brain") }
             aboutTab
