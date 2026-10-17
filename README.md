@@ -170,7 +170,7 @@ SCALW_APPLE/
 
 - Python 原版:[windbreake/ShizukuAgent](https://github.com/windbreake/ShizukuAgent)
 - 旧 Swift 仓库:`windbreake/ShizukuClaw`(仅存档)
-- 当前仓库:`JohnWick6999/HIVE-Harness`
+- 当前仓库:`JohnWick6999/HIVEs-Harness`
 
 ## 📄 许可证
 
