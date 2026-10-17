@@ -70,6 +70,7 @@ final class AppState {
     let skillEvolver: SkillEvolver
     private var marketplace: MarketplaceService
     private var marketplaceInstaller: MarketplaceInstaller
+    private var marketplaceTokenLoaded = false
 
     // MARK: - 审批内部状态
 
@@ -995,7 +996,8 @@ final class AppState {
     }
 
     func checkSkillUpdate(_ skill: Skill) async throws -> MarketplaceUpdateStatus {
-        try await marketplaceInstaller.checkUpdate(for: skill)
+        ensureMarketplaceToken()
+        return try await marketplaceInstaller.checkUpdate(for: skill)
     }
 
     /// 依次检查所有市场安装技能;单个失败标记 unknown,不中断批量检查。
@@ -1012,6 +1014,7 @@ final class AppState {
     }
 
     func updateSkill(_ skill: Skill) async throws -> [Skill] {
+        ensureMarketplaceToken()
         let installed = try await marketplaceInstaller.update(skill)
         skills = skillStore.all()
         return installed
@@ -1336,9 +1339,26 @@ final class AppState {
         (try? keychain.string(forKey: "github.token")) ?? ""
     }
 
+    /// 惰性读取钥匙串:避免启动时弹授权;首次进入市场再装载已保存 Token。
+    private func ensureMarketplaceToken() {
+        guard !marketplaceTokenLoaded else { return }
+        marketplaceTokenLoaded = true
+        guard let token = try? keychain.string(forKey: "github.token"),
+              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        marketplace = MarketplaceService(githubToken: trimmed)
+        marketplaceInstaller = MarketplaceInstaller(
+            githubToken: trimmed,
+            skillStore: skillStore,
+            mcpDirectory: mcpDirectory
+        )
+    }
+
     func setGitHubToken(_ token: String) {
         try? keychain.setString(token, forKey: "github.token")
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        marketplaceTokenLoaded = true
         marketplace = MarketplaceService(githubToken: trimmed)
         marketplaceInstaller = MarketplaceInstaller(githubToken: trimmed, skillStore: skillStore, mcpDirectory: mcpDirectory)
     }
@@ -1348,19 +1368,23 @@ final class AppState {
         source: MarketplaceSource?,
         page: Int = 1
     ) async -> MarketplaceResult {
-        await marketplace.feed(query: query, source: source, page: page)
+        ensureMarketplaceToken()
+        return await marketplace.feed(query: query, source: source, page: page)
     }
 
     func importMarketplaceLink(_ raw: String) async throws -> MarketplaceItem {
-        try await marketplace.importLink(raw)
+        ensureMarketplaceToken()
+        return try await marketplace.importLink(raw)
     }
 
     func expandMarketplaceItem(_ item: MarketplaceItem) async throws -> [MarketplaceItem] {
-        try await marketplace.expand(item: item)
+        ensureMarketplaceToken()
+        return try await marketplace.expand(item: item)
     }
 
     func planMarketplaceInstall(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
-        try await marketplaceInstaller.plan(for: item)
+        ensureMarketplaceToken()
+        return try await marketplaceInstaller.plan(for: item)
     }
 
     @discardableResult

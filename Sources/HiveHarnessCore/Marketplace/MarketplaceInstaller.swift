@@ -75,6 +75,7 @@ public struct MarketplaceInstaller: Sendable {
     private let modelScope: ModelScopeMarketplaceClient
     private let skillStore: SkillStore
     private let mcpDirectory: URL?
+    private let session: URLSession
 
     public init(
         githubToken: String? = nil,
@@ -89,6 +90,7 @@ public struct MarketplaceInstaller: Sendable {
         self.modelScope = ModelScopeMarketplaceClient(session: session)
         self.skillStore = skillStore
         self.mcpDirectory = mcpDirectory
+        self.session = session
     }
 
     public func plan(for item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
@@ -125,24 +127,145 @@ public struct MarketplaceInstaller: Sendable {
                 "\(item.source.title) 条目没有可用的 GitHub 源。\(hint)"
             )
         }
-        let repository = try await github.repository(owner: target.owner, repo: target.repo)
-        let ref = target.ref ?? repository.defaultBranch
-        let fullTree = try await github.tree(owner: target.owner, repo: target.repo, ref: ref)
-        let raw: @Sendable (String) async throws -> String = { path in
-            try await github.rawFile(
+        do {
+            let repository = try await github.repository(owner: target.owner, repo: target.repo)
+            let ref = target.ref ?? repository.defaultBranch
+            let fullTree = try await github.tree(owner: target.owner, repo: target.repo, ref: ref)
+            let raw: @Sendable (String) async throws -> String = { path in
+                try await github.rawFile(
+                    owner: target.owner,
+                    repo: target.repo,
+                    ref: ref,
+                    path: path
+                )
+            }
+            return try await planRemote(
+                item: item,
+                repository: repository,
+                ref: ref,
+                fullTree: fullTree,
+                raw: raw
+            )
+        } catch let error as MarketplaceError {
+            guard case .rateLimited = error else { throw error }
+            return try await planGitHubZip(
+                item: item,
                 owner: target.owner,
                 repo: target.repo,
-                ref: ref,
-                path: path
+                ref: target.ref
             )
+        }
+    }
+
+    /// GitHub API 限流时的降级:codeload zip 不消耗 API 配额。
+    private func planGitHubZip(
+        item: MarketplaceItem,
+        owner: String,
+        repo: String,
+        ref: String?
+    ) async throws -> MarketplaceInstallPlan {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hive-github-zip-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let refs = Array(Set([ref, "HEAD", "main", "master"].compactMap { $0 }))
+        var archive: URL?
+        var usedRef = "HEAD"
+        var lastError: Error?
+        for candidate in refs {
+            let encoded = candidate.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? candidate
+            guard let url = URL(string: "https://codeload.github.com/\(owner)/\(repo)/zip/\(encoded)") else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 45
+                request.setValue("HiveHarness/0.1 (macOS Agent)", forHTTPHeaderField: "User-Agent")
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+                let zip = root.appendingPathComponent("repo.zip")
+                try data.write(to: zip)
+                archive = zip
+                usedRef = candidate
+                break
+            } catch {
+                lastError = error
+            }
+        }
+        guard let archive else {
+            throw MarketplaceError.rateLimited(
+                "GitHub API 与 codeload 降级均失败。\(lastError?.localizedDescription ?? "")"
+            )
+        }
+
+        let contents = try Self.unzipAndRead(zip: archive, root: root)
+        guard !contents.isEmpty else {
+            throw MarketplaceError.noInstallableSkill
+        }
+        let snapshot = contents
+        let paths = snapshot.keys.sorted()
+        guard !paths.isEmpty else {
+            throw MarketplaceError.noInstallableSkill
+        }
+        let tree = paths.map { path in
+            GitHubTreeEntry(path: path, type: "blob", size: snapshot[path]?.utf8.count, sha: nil)
+        }
+        let repository = GitHubRepository(
+            owner: owner,
+            name: repo,
+            fullName: "\(owner)/\(repo)",
+            description: item.summary,
+            stars: 0,
+            license: nil,
+            defaultBranch: usedRef,
+            htmlURL: "https://github.com/\(owner)/\(repo)",
+            avatarURL: nil
+        )
+        let raw: @Sendable (String) async throws -> String = { path in
+            snapshot[path] ?? ""
         }
         return try await planRemote(
             item: item,
             repository: repository,
-            ref: ref,
-            fullTree: fullTree,
+            ref: usedRef,
+            fullTree: tree,
             raw: raw
         )
+    }
+
+    private static func unzipAndRead(zip: URL, root: URL) throws -> [String: String] {
+        let unzip = Process()
+        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        unzip.arguments = ["-q", "-o", zip.path, "-d", root.path]
+        try unzip.run()
+        unzip.waitUntilExit()
+        guard unzip.terminationStatus == 0 else { return [:] }
+
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [:] }
+        var contents: [String: String] = [:]
+        for case let url as URL in enumerator {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+            let relativeToRoot = String(url.path.dropFirst(root.path.count + 1))
+            let parts = relativeToRoot.split(separator: "/", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            let path = parts[1]
+            guard path.hasSuffix("SKILL.md")
+                || path == "package.json"
+                || path.hasSuffix("mcp.json")
+                || path.hasSuffix("server.json")
+            else { continue }
+            guard let text = try? String(contentsOf: url, encoding: .utf8),
+                  text.utf8.count <= 512_000
+            else { continue }
+            contents[path] = text
+        }
+        return contents
     }
 
     private func planGitLab(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {

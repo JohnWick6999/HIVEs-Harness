@@ -174,7 +174,24 @@ public actor MarketplaceService {
         }
         switch link {
         case let .github(owner, repo, ref):
-            let repository = try await github.repository(owner: owner, repo: repo)
+            let repository: GitHubRepository
+            do {
+                repository = try await github.repository(owner: owner, repo: repo)
+            } catch let error as MarketplaceError {
+                guard case .rateLimited = error else { throw error }
+                // 限流时仍允许导入链接:安装阶段走 codeload zip,不再消耗 API 配额。
+                repository = GitHubRepository(
+                    owner: owner,
+                    name: repo,
+                    fullName: "\(owner)/\(repo)",
+                    description: "GitHub 仓库(API 限流,安装时使用 zip 降级)",
+                    stars: 0,
+                    license: nil,
+                    defaultBranch: ref ?? "main",
+                    htmlURL: "https://github.com/\(owner)/\(repo)",
+                    avatarURL: nil
+                )
+            }
             let subpath = MarketplaceLinkParser.installPath(raw)
             let url = ref.map { "https://github.com/\(owner)/\(repo)/tree/\($0)" }
                 ?? "https://github.com/\(owner)/\(repo)"
