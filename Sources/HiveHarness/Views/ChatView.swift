@@ -6,8 +6,7 @@ struct ChatView: View {
     @Environment(AppState.self) private var state
     @State private var input = ""
     @State private var pendingAttachments: [FileAttachment] = []
-    @State private var reasoningBurst: ReasoningEffort?
-    @State private var reasoningBurstToken = 0
+    @State private var showModelPanel = false
     @State private var showSettings = false
     @State private var showMarketplace = false
     @State private var showWorkbench = false
@@ -126,8 +125,6 @@ struct ChatView: View {
             sessionMenu
 
             Spacer()
-
-            contextIndicator
 
             if state.isBusy {
                 ProgressView()
@@ -618,7 +615,8 @@ struct ChatView: View {
 
                     Spacer(minLength: 0)
 
-                    modelMenu
+                    contextIndicator
+                    modelPicker
                 }
             }
             .padding(.horizontal, 12)
@@ -686,90 +684,123 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var modelMenu: some View {
-        ZStack {
-            Menu {
-                Section("模型") {
-                    ForEach(state.selectableModels) { model in
-                        Button {
-                            state.selectModel(model.id)
-                        } label: {
-                            if model.id == state.activeModelID {
-                                Label(model.name, systemImage: "checkmark")
-                            } else {
-                                Text(model.name)
-                            }
-                        }
-                    }
-                }
-
-                Divider()
-
-                Section("推理强度") {
-                    ForEach(ReasoningEffort.allCases) { level in
-                        Button {
-                            applyReasoning(level)
-                        } label: {
-                            if level == state.config.agent.reasoningEffort {
-                                Label(level.title, systemImage: "checkmark")
-                            } else {
-                                Label(level.title, systemImage: reasoningIcon(level))
-                            }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "cpu")
-                        .font(.system(size: 9))
-                    Text(state.activeModelName)
-                        .font(.system(size: 9, weight: .medium))
-                        .lineLimit(1)
-                    Text(state.config.agent.reasoningEffort.title)
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(
-                            reasoningColor(state.config.agent.reasoningEffort).opacity(0.14),
-                            in: Capsule()
-                        )
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 7))
-                        .foregroundStyle(.tertiary)
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .hiveGlass(corner: 6, tint: HiveTheme.amber.opacity(0.02), interactive: true)
+    private var modelPicker: some View {
+        Button {
+            showModelPanel.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 9))
+                Text(state.activeModelName)
+                    .font(.system(size: 9, weight: .medium))
+                    .lineLimit(1)
+                Text(state.config.agent.reasoningEffort.title)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(
+                        reasoningColor(state.config.agent.reasoningEffort).opacity(0.14),
+                        in: Capsule()
+                    )
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.tertiary)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("切换模型与推理强度")
-
-            if let reasoningBurst {
-                ReasoningBurstView(effort: reasoningBurst)
-                    .id(reasoningBurstToken)
-                    .offset(y: -58)
-                    .transition(.opacity)
-            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .hiveGlass(corner: 6, tint: HiveTheme.amber.opacity(0.02), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .help("模型与推理强度")
+        .popover(isPresented: $showModelPanel, arrowEdge: .bottom) {
+            modelPanel
         }
     }
 
-    private func applyReasoning(_ level: ReasoningEffort) {
-        state.config.agent.reasoningEffort = level
-        state.saveConfig()
-        reasoningBurst = level
-        reasoningBurstToken += 1
-        let token = reasoningBurstToken
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if token == reasoningBurstToken {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    reasoningBurst = nil
+    private var modelPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("模型与推理")
+                        .font(.headline)
+                    Text("当前 API 可用模型")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("完成") { showModelPanel = false }
+                    .font(.caption)
+            }
+
+            VStack(spacing: 3) {
+                ForEach(state.selectableModels) { model in
+                    Button {
+                        state.selectModel(model.id)
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: model.id == state.activeModelID
+                                  ? "checkmark.circle.fill"
+                                  : "circle")
+                                .foregroundStyle(model.id == state.activeModelID
+                                                 ? HiveTheme.amberDeep
+                                                 : Color.secondary)
+                            Text(model.name)
+                                .font(.callout)
+                                .lineLimit(1)
+                            Spacer()
+                            if model.id == state.activeModelID {
+                                Text("推理 \(state.config.agent.reasoningEffort.title)")
+                                    .font(.caption2)
+                                    .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(
+                            model.id == state.activeModelID
+                                ? HiveTheme.amber.opacity(0.10)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("推理强度")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(state.config.agent.reasoningEffort.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
+                }
+                CometReasoningSlider(effort: reasoningBinding)
+                Text("等级越高,推理越深入;彗尾颜色和长度随等级变化。")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .padding(14)
+        .frame(width: 350)
+        .background(HiveBackground())
+    }
+
+    private var reasoningBinding: Binding<ReasoningEffort> {
+        Binding(
+            get: { state.config.agent.reasoningEffort },
+            set: { newValue in
+                state.config.agent.reasoningEffort = newValue
+                state.saveConfig()
+            }
+        )
     }
 
     private func reasoningColor(_ level: ReasoningEffort) -> Color {
@@ -779,16 +810,6 @@ struct ChatView: View {
         case .medium: return HiveTheme.amber
         case .high: return .orange
         case .max: return .pink
-        }
-    }
-
-    private func reasoningIcon(_ level: ReasoningEffort) -> String {
-        switch level {
-        case .off: return "minus.circle"
-        case .low: return "brain"
-        case .medium: return "brain.head.profile"
-        case .high: return "sparkles"
-        case .max: return "flame.fill"
         }
     }
 
