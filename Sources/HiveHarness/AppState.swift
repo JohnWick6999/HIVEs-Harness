@@ -662,6 +662,11 @@ final class AppState {
                             showPluginStudio = true
                         }
                     }
+                    updateContextUsage(
+                        result.lastUsage,
+                        threadID: requestThread,
+                        persona: requestPersona
+                    )
                     updateAssistantMessage(id: placeholderID, text: result.reply)
                     if requestThread == currentThreadID {
                         lastToolTrace = result.trace
@@ -943,6 +948,25 @@ final class AppState {
     func deletePlugin(_ project: PluginProject) throws {
         try pluginStudio.deleteProject(id: project.id)
         reloadPluginProjects()
+    }
+
+    /// 用模型返回的真实 usage 修正上下文圆环;失败时保留估算。
+    private func updateContextUsage(
+        _ usage: LLMUsage,
+        threadID: String,
+        persona: String
+    ) {
+        guard usage.promptTokens > 0, !usage.estimated else { return }
+        var state = (try? store.loadContextState(threadID: threadID, persona: persona)) ?? contextState
+        state.actualPromptTokens = usage.promptTokens
+        state.actualCompletionTokens = usage.completionTokens
+        if state.contextLimit <= 0 {
+            state.contextLimit = config.llm.contextWindow
+        }
+        if threadID == currentThreadID, persona == selectedPersona {
+            contextState = state
+        }
+        try? store.saveContextState(state, threadID: threadID, persona: persona)
     }
 
     // MARK: - AI 用量

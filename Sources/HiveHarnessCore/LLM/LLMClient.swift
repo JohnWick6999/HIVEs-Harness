@@ -169,17 +169,21 @@ public struct LLMUsage: Codable, Sendable, Equatable {
     public var totalTokens: Int
     /// 命中缓存的 prompt token(无该字段时为 0)。
     public var cachedTokens: Int
+    /// 是否为本地估算(提供商未返回 usage)。
+    public var estimated: Bool
 
     public init(
         promptTokens: Int = 0,
         completionTokens: Int = 0,
         totalTokens: Int? = nil,
-        cachedTokens: Int = 0
+        cachedTokens: Int = 0,
+        estimated: Bool = false
     ) {
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
         self.totalTokens = totalTokens ?? (promptTokens + completionTokens)
         self.cachedTokens = cachedTokens
+        self.estimated = estimated
     }
 
     public static let zero = LLMUsage()
@@ -193,7 +197,8 @@ public struct LLMUsage: Codable, Sendable, Equatable {
             promptTokens: lhs.promptTokens + rhs.promptTokens,
             completionTokens: lhs.completionTokens + rhs.completionTokens,
             totalTokens: lhs.totalTokens + rhs.totalTokens,
-            cachedTokens: lhs.cachedTokens + rhs.cachedTokens
+            cachedTokens: lhs.cachedTokens + rhs.cachedTokens,
+            estimated: lhs.estimated || rhs.estimated
         )
     }
 }

@@ -128,6 +128,8 @@ open build/HiveHarness.app
 
 统计按会话保存在 SQLite `kv_store` 的 `usage.<thread_id>`,切换会话自动加载;模型未返回 usage 时用本地估算兜底。
 
+上下文圆环同样优先使用模型返回的真实 prompt token(上次请求);只有提供商未返回 usage 时才显示本地估算。明细里会同时列出两者,避免“估算当实际”。
+
 ## 🧯 常见错误
 
 - **`LLMError error 0` / 无法解析响应**:通常是 Base URL、模型名、API Key 填反或模型不存在。设置 → 模型会拒绝把 `sk-...` 填进“模型名”;Key 只放 API Key 字段(Keychain)。

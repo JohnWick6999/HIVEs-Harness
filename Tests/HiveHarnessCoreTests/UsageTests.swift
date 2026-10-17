@@ -45,6 +45,25 @@ struct UsageTests {
         #expect(stats == .zero)
     }
 
+    @Test("上下文圆环优先显示实际 prompt token")
+    func contextDisplay() {
+        var state = SessionContextState(
+            estimatedTokens: 1_000,
+            contextLimit: 10_000,
+            budget: 8_000,
+            usagePercent: 10
+        )
+        #expect(state.displayTokens == 1_000)
+        #expect(state.displayPercent == 10)
+        #expect(!state.isActualUsage)
+
+        state.actualPromptTokens = 8_000
+        state.actualCompletionTokens = 200
+        #expect(state.displayTokens == 8_000)
+        #expect(state.displayPercent == 80)
+        #expect(state.isActualUsage)
+    }
+
     @Test("AgentLoop 返回真实 usage 与模型轮数")
     func agentUsage() async throws {
         let usage = LLMUsage(
@@ -57,6 +76,7 @@ struct UsageTests {
         ])
         let result = try await fixture.loop.invoke(message: "你好")
         #expect(result.usage == usage)
+        #expect(result.lastUsage == usage)
         #expect(result.modelCalls == 1)
     }
 }
