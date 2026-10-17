@@ -6,6 +6,8 @@ struct ChatView: View {
     @Environment(AppState.self) private var state
     @State private var input = ""
     @State private var pendingAttachments: [FileAttachment] = []
+    @State private var reasoningBurst: ReasoningEffort?
+    @State private var reasoningBurstToken = 0
     @State private var showSettings = false
     @State private var showMarketplace = false
     @State private var showWorkbench = false
@@ -617,7 +619,6 @@ struct ChatView: View {
                     Spacer(minLength: 0)
 
                     modelMenu
-                    ReasoningControl(effort: reasoningBinding)
                 }
             }
             .padding(.horizontal, 12)
@@ -685,49 +686,110 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var reasoningBinding: Binding<ReasoningEffort> {
-        Binding(
-            get: { state.config.agent.reasoningEffort },
-            set: { newValue in
-                state.config.agent.reasoningEffort = newValue
-                state.saveConfig()
-            }
-        )
-    }
-
     private var modelMenu: some View {
-        Menu {
-            ForEach(state.selectableModels) { model in
-                Button {
-                    state.selectModel(model.id)
-                } label: {
-                    if model.id == state.activeModelID {
-                        Label(model.name, systemImage: "checkmark")
-                    } else {
-                        Text(model.name)
+        ZStack {
+            Menu {
+                Section("模型") {
+                    ForEach(state.selectableModels) { model in
+                        Button {
+                            state.selectModel(model.id)
+                        } label: {
+                            if model.id == state.activeModelID {
+                                Label(model.name, systemImage: "checkmark")
+                            } else {
+                                Text(model.name)
+                            }
+                        }
                     }
                 }
+
+                Divider()
+
+                Section("推理强度") {
+                    ForEach(ReasoningEffort.allCases) { level in
+                        Button {
+                            applyReasoning(level)
+                        } label: {
+                            if level == state.config.agent.reasoningEffort {
+                                Label(level.title, systemImage: "checkmark")
+                            } else {
+                                Label(level.title, systemImage: reasoningIcon(level))
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 9))
+                    Text(state.activeModelName)
+                        .font(.system(size: 9, weight: .medium))
+                        .lineLimit(1)
+                    Text(state.config.agent.reasoningEffort.title)
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            reasoningColor(state.config.agent.reasoningEffort).opacity(0.14),
+                            in: Capsule()
+                        )
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 7))
+                        .foregroundStyle(.tertiary)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .hiveGlass(corner: 6, tint: HiveTheme.amber.opacity(0.02), interactive: true)
             }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 9))
-                Text(state.activeModelName)
-                    .font(.system(size: 9, weight: .medium))
-                    .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 7))
-                    .foregroundStyle(.tertiary)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("切换模型与推理强度")
+
+            if let reasoningBurst {
+                ReasoningBurstView(effort: reasoningBurst)
+                    .id(reasoningBurstToken)
+                    .offset(y: -58)
+                    .transition(.opacity)
             }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .hiveGlass(corner: 6, tint: HiveTheme.amber.opacity(0.02), interactive: true)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("切换当前 API 可用模型")
+    }
+
+    private func applyReasoning(_ level: ReasoningEffort) {
+        state.config.agent.reasoningEffort = level
+        state.saveConfig()
+        reasoningBurst = level
+        reasoningBurstToken += 1
+        let token = reasoningBurstToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if token == reasoningBurstToken {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    reasoningBurst = nil
+                }
+            }
+        }
+    }
+
+    private func reasoningColor(_ level: ReasoningEffort) -> Color {
+        switch level {
+        case .off: return .secondary
+        case .low: return .cyan
+        case .medium: return HiveTheme.amber
+        case .high: return .orange
+        case .max: return .pink
+        }
+    }
+
+    private func reasoningIcon(_ level: ReasoningEffort) -> String {
+        switch level {
+        case .off: return "minus.circle"
+        case .low: return "brain"
+        case .medium: return "brain.head.profile"
+        case .high: return "sparkles"
+        case .max: return "flame.fill"
+        }
     }
 
     private func pickFiles() {
