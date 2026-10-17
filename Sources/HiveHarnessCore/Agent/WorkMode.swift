@@ -88,22 +88,31 @@ public struct ApprovalRequest: Identifiable, Sendable, Equatable {
     public let id: UUID
     public let kind: ApprovalKind
     public let detail: String
+    /// 去重主体:工具名 / 文件路径等。未提供时退回 detail。
+    public let subject: String?
     public let createdAt: Date
 
     public init(
         id: UUID = UUID(),
         kind: ApprovalKind,
         detail: String,
+        subject: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
         self.kind = kind
         self.detail = detail
+        self.subject = subject
         self.createdAt = createdAt
     }
 
-    /// “始终允许”去重键(应用会话内有效)。
-    public var key: String { "\(kind.rawValue)|\(detail)" }
+    /// “始终允许”去重键:同一工具/同一路径只问一次,与本次参数无关。
+    public var key: String {
+        let scope = (subject ?? detail)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return "\(kind.rawValue)|\(scope)"
+    }
 }
 
 public enum ApprovalDecision: String, Sendable, Equatable {

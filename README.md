@@ -136,6 +136,7 @@ open build/HiveHarness.app
 - **`LLMError error 0` / 无法解析响应**:通常是 Base URL、模型名、API Key 填反或模型不存在。设置 → 模型会拒绝把 `sk-...` 填进“模型名”;Key 只放 API Key 字段(Keychain)。
 - **HTTP 401/404**:检查 Key 与模型 id;DeepSeek 官方可用模型以 `/models` 返回为准。
 - **MCP 不出现**:`servers.json` 中 `enabled` 必须为 true,并在设置 → MCP 重新载入。
+- **审批重复弹窗**:「始终允许」按工具身份去重(如 `http_get`),同一工具换 URL/参数不会重复询问;仅本次运行内有效。
 
 ## 🌐 联网与天气
 

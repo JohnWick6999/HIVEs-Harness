@@ -35,7 +35,11 @@ public struct FileAccessPolicy: Sendable {
         guard let approval else {
             throw ToolError.approvalDenied("未配置审批处理器,已拒绝写入工作区外文件: \(target.path)")
         }
-        let request = ApprovalRequest(kind: .externalWrite, detail: target.path)
+        let request = ApprovalRequest(
+            kind: .externalWrite,
+            detail: target.path,
+            subject: "path:\(target.path)"
+        )
         let decision = await approval(request)
         guard decision != .reject else {
             throw ToolError.approvalDenied("用户拒绝写入 \(target.path)")

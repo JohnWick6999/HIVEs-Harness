@@ -230,7 +230,7 @@ struct ChatView: View {
             HStack(spacing: 8) {
                 Image(systemName: "hand.raised.fill")
                     .foregroundStyle(.orange)
-                Text(request.kind.title)
+                Text(request.subject ?? request.kind.title)
                     .font(.caption.weight(.semibold))
                 Spacer()
             }
@@ -244,6 +244,7 @@ struct ChatView: View {
                 Button("拒绝") { state.resolveApproval(.reject) }
                     .keyboardShortcut(.cancelAction)
                 Button("始终允许") { state.resolveApproval(.always) }
+                    .help("本次运行内不再询问该工具")
                 Button("允许一次") { state.resolveApproval(.once) }
                     .keyboardShortcut(.defaultAction)
             }
