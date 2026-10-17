@@ -29,6 +29,25 @@ struct MemoryProvenanceTests {
         #expect(memory.lastUsedAt == nil)
     }
 
+    @Test("编辑记忆正文/置信度并重建检索")
+    func updateMemory() throws {
+        let store = try makeMemoryStore()
+        let id = try store.addMemory(
+            persona: "p",
+            content: "用户喜欢旧口味",
+            sourceKind: "manual",
+            confidence: 0.4
+        )
+        #expect(try store.updateMemory(id: id, content: "用户喜欢新口味", confidence: 0.9))
+
+        let memory = try #require(try store.listMemories(persona: "p").first)
+        #expect(memory.content == "用户喜欢新口味")
+        #expect(memory.confidence == 0.9)
+
+        let results = try store.searchMemories(query: "新口味", persona: "p", topK: 3)
+        #expect(results.contains { $0.id == id })
+    }
+
     @Test("检索注入会累计使用次数")
     func retrievalUsage() throws {
         let store = try makeMemoryStore()

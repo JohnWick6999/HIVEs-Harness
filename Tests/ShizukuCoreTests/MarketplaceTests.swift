@@ -520,6 +520,71 @@ struct MarketplaceTests {
         #expect(plan.files[0].skillID == "pdf-skill")
     }
 
+    @Test("插件包一次安装多个技能")
+    func multiSkillBundle() async throws {
+        MarketplaceMockURLProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            if path == "/repos/acme/bundle" {
+                return httpJSON(request, [
+                    "name": "bundle",
+                    "full_name": "acme/bundle",
+                    "description": "multi skill bundle",
+                    "default_branch": "main",
+                    "html_url": "https://github.com/acme/bundle",
+                    "owner": ["login": "acme"],
+                ])
+            }
+            if path == "/repos/acme/bundle/git/trees/main" {
+                return httpJSON(request, [
+                    "tree": [
+                        ["path": "skills/one/SKILL.md", "type": "blob", "size": 120],
+                        ["path": "skills/two/SKILL.md", "type": "blob", "size": 120],
+                    ]
+                ])
+            }
+            if request.url?.host == "raw.githubusercontent.com" {
+                let isOne = path.contains("/skills/one/")
+                let content = """
+                ---
+                id: \(isOne ? "bundle-one" : "bundle-two")
+                name: \(isOne ? "技能一" : "技能二")
+                description: 子技能
+                ---
+
+                1. 执行步骤
+                2. 输出结果
+                """
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(content.utf8))
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "github:acme/bundle",
+            name: "bundle",
+            summary: "",
+            source: .github,
+            kind: .plugin,
+            installURL: "https://github.com/acme/bundle"
+        )
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 2)
+        #expect(Set(plan.files.map(\.skillID)) == ["bundle-one", "bundle-two"])
+
+        let installed = try installer.install(plan)
+        #expect(installed.count == 2)
+        #expect(store.load(id: "bundle-one") != nil)
+        #expect(store.load(id: "bundle-two") != nil)
+    }
+
     @Test("MCP 清单一键安装并默认停用")
     func installMCPFromGitHub() async throws {
         MarketplaceMockURLProtocol.handler = { request in

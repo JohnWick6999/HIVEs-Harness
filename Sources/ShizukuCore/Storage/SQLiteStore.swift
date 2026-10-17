@@ -408,6 +408,22 @@ public final class SQLiteStore: @unchecked Sendable {
         }
     }
 
+    /// 更新记忆正文与置信度;正文变化时重算嵌入。
+    @discardableResult
+    public func updateMemory(id: Int64, content: String, confidence: Double) throws -> Bool {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let embeddingJSON = try encodeJSON(TextEmbedding.hashVector(trimmed))
+        let clamped = min(1, max(0, confidence))
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            "UPDATE memories SET content = ?, embedding = ?, confidence = ? WHERE id = ?",
+            [.text(trimmed), .text(embeddingJSON), .real(clamped), .integer(id)]
+        )
+        return sqlite3_changes(db) > 0
+    }
+
     /// 删除单条记忆(记忆管理页用)
     @discardableResult
     public func deleteMemory(id: Int64) throws -> Bool {

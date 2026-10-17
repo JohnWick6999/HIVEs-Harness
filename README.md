@@ -14,7 +14,7 @@
 |---|---|---|
 | 💬 流式聊天 | 字符级打字动画,SSE 流式输出 | ✅ |
 | 🐱 人格系统 | 5 个内置人格(小雫/azuma/selena/Yukikaze/ui),对话历史按人格隔离 | ✅ |
-| 🧠 长期记忆 | SQLite + 哈希向量检索;自动记忆(≥12 字);来源会话/工具、置信度、检索次数可审计 | ✅ |
+| 🧠 长期记忆 | SQLite + 哈希向量检索;自动记忆;来源/置信度/检索次数可审计,支持编辑与置信度调整 | ✅ |
 | 🔧 工具调用 | 文件读写(工作区沙箱)、记忆检索/写入、本地 Agent CLI(macOS) | ✅ |
 | ✅ 任务计划 | todowrite/todoread,计划持久化 + 实时进度面板,运行绑定防跨轮串写 | ✅ |
 | 🗂️ 多会话 | 会话列表 / 新建 / 撤销上一轮 / 分叉 / 清空 / 删除,按人格隔离,旧历史自动迁移 | ✅ |
@@ -22,7 +22,7 @@
 | 🛡️ 工作模式与审批 | 对话/安全/完全控制三档;读任意路径、写受模式限制;外部写入与执行需审批;Touch ID 解锁 | ✅ |
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
 | 🧰 工作台 | 工作区文件浏览/预览、Git status + diff、Shell(完全控制 + 确认) | ✅ |
-| 🏪 插件市场 | 43 个内置卡片 + GitHub + 魔搭;marketplace.json 展开、子目录安装、Git blob/Sha256 校验、来源清单、检查更新/一键更新 | ✅ |
+| 🏪 插件市场 | 43 个内置卡片 + GitHub + 魔搭;marketplace.json 展开、子目录/多技能包安装、校验、来源清单、检查更新 | ✅ |
 | 🌐 本地网关 | 127.0.0.1 上的 OpenAI 兼容 `/v1/models` + `/v1/chat/completions`(SSE 流式),可选 Bearer Token | ✅ |
 | 🧬 技能自进化 | 每 10 次迭代反思;patch 优先;60 字/风险扫描/使用计数/30 天归档;版本备份/回滚 + ledger | ✅ |
 | 🧾 运行日志 | 本地记录模型/工具/审批/压缩事件,时间线回看与 JSON 导出 | ✅ |
@@ -70,7 +70,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,143 项用例覆盖全部核心模块
+- 测试:swift-testing,145 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

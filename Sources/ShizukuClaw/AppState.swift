@@ -961,6 +961,11 @@ final class AppState {
         memories = (try? store.listMemories(persona: selectedPersona, kind: "long_term")) ?? []
     }
 
+    func updateMemory(_ memory: MemoryItem, content: String, confidence: Double) {
+        _ = try? store.updateMemory(id: memory.id, content: content, confidence: confidence)
+        loadMemories()
+    }
+
     func addMemory(_ content: String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
