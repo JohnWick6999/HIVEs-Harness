@@ -408,14 +408,20 @@ public actor AgentLoop {
                 temperature: resolved.model.temperature
             )
         }
+        let isDeepSeek = resolved.model.model.lowercased().contains("deepseek")
+        let effort = config.agent.reasoningEffort
+        let supportsReasoning = ModelContextResolver.supportsReasoningEffort(
+            for: resolved.model.model
+        )
         return OpenAICompatibleClient(
             baseURL: resolved.provider.baseURL,
             apiKey: resolved.apiKey,
             model: resolved.model.model,
             temperature: resolved.model.temperature,
-            reasoningEffort: ModelContextResolver.supportsReasoningEffort(for: resolved.model.model)
-                ? config.agent.reasoningEffort.apiValue
-                : nil
+            reasoningEffort: supportsReasoning
+                ? (isDeepSeek ? effort.deepSeekValue : effort.apiValue)
+                : nil,
+            thinkingEnabled: isDeepSeek ? (effort != .off) : nil
         )
     }
 
@@ -764,8 +770,9 @@ public actor AgentLoop {
             let text: String
             let toolCalls: [ToolCall]
             let callUsage: LLMUsage
+            let reasoningContent: String?
             if streaming {
-                (text, toolCalls, activeModel, callUsage) = try await streamWithFallback(
+                (text, toolCalls, activeModel, callUsage, reasoningContent) = try await streamWithFallback(
                     pool: pool,
                     messages: requestMessages,
                     specs: specs,
@@ -780,6 +787,7 @@ public actor AgentLoop {
                 text = response.content
                 toolCalls = response.toolCalls
                 activeModel = modelID
+                reasoningContent = response.reasoningContent
                 callUsage = response.usage ?? Self.estimateUsage(
                     messages: requestMessages,
                     completion: text
@@ -813,7 +821,8 @@ public actor AgentLoop {
                 ChatMessage(
                     role: .assistant,
                     content: .text(text),
-                    toolCalls: toolCalls
+                    toolCalls: toolCalls,
+                    reasoningContent: reasoningContent
                 )
             )
 
@@ -909,13 +918,15 @@ public actor AgentLoop {
         text: String,
         toolCalls: [ToolCall],
         modelID: String,
-        usage: LLMUsage
+        usage: LLMUsage,
+        reasoningContent: String?
     ) {
         var lastError: Error?
         for entry in pool.entries {
             var text = ""
             var toolCalls: [ToolCall] = []
             var usage = LLMUsage.zero
+            var reasoningContent = ""
             var emitted = false
             do {
                 for try await chunk in entry.client.stream(messages: messages, tools: specs) {
@@ -923,6 +934,9 @@ public actor AgentLoop {
                         throw CancellationError()
                     }
                     text += chunk.delta
+                    if let reasoning = chunk.reasoningDelta {
+                        reasoningContent += reasoning
+                    }
                     if !chunk.delta.isEmpty {
                         emitted = true
                         yield?(.chunk(chunk.delta))
@@ -937,7 +951,13 @@ public actor AgentLoop {
                 if usage.totalTokens == 0 {
                     usage = Self.estimateUsage(messages: messages, completion: text)
                 }
-                return (text, toolCalls, entry.id, usage)
+                return (
+                    text,
+                    toolCalls,
+                    entry.id,
+                    usage,
+                    reasoningContent.isEmpty ? nil : reasoningContent
+                )
             } catch is CancellationError {
                 throw CancellationError()
             } catch {

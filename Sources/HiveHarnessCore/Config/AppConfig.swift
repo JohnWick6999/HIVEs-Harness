@@ -20,6 +20,7 @@ public enum ReasoningEffort: String, Codable, Sendable, CaseIterable, Identifiab
         }
     }
 
+    /// OpenAI 兼容接口的 reasoning_effort。
     public var apiValue: String? {
         switch self {
         case .off: return nil
@@ -27,6 +28,17 @@ public enum ReasoningEffort: String, Codable, Sendable, CaseIterable, Identifiab
         case .medium: return "medium"
         case .high: return "high"
         case .max: return "high"
+        }
+    }
+
+    /// DeepSeek 支持 low/high/max;medium 会被服务端映射为 high。
+    public var deepSeekValue: String? {
+        switch self {
+        case .off: return nil
+        case .low: return "low"
+        case .medium: return "medium"
+        case .high: return "high"
+        case .max: return "max"
         }
     }
 

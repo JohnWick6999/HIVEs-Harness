@@ -11,6 +11,8 @@ struct ReasoningTests {
         #expect(ReasoningEffort.medium.apiValue == "medium")
         #expect(ReasoningEffort.high.apiValue == "high")
         #expect(ReasoningEffort.max.apiValue == "high")
+        #expect(ReasoningEffort.max.deepSeekValue == "max")
+        #expect(ReasoningEffort.medium.deepSeekValue == "medium")
         #expect(AppConfig.default.agent.reasoningEffort == .medium)
     }
 
