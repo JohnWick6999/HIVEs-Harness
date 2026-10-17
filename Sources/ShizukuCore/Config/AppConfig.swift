@@ -56,15 +56,33 @@ public struct AppConfig: Codable, Sendable, Equatable {
         public var systemPrompt: String
         /// 默认人格 id
         public var defaultPersona: String
+        /// 工作模式(chat / sandbox / full)
+        public var workMode: WorkMode
 
         public init(
             maxRounds: Int = 6,
             systemPrompt: String = "你是一个智能助手,请根据用户意图选择工具或直接回答。",
-            defaultPersona: String = "shizuku"
+            defaultPersona: String = "shizuku",
+            workMode: WorkMode = .sandbox
         ) {
             self.maxRounds = maxRounds
             self.systemPrompt = systemPrompt
             self.defaultPersona = defaultPersona
+            self.workMode = workMode
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case maxRounds, systemPrompt, defaultPersona, workMode
+        }
+
+        /// 兼容旧配置文件:workMode 缺失时按安全模式处理。
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            maxRounds = try container.decodeIfPresent(Int.self, forKey: .maxRounds) ?? 6
+            systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt)
+                ?? "你是一个智能助手,请根据用户意图选择工具或直接回答。"
+            defaultPersona = try container.decodeIfPresent(String.self, forKey: .defaultPersona) ?? "shizuku"
+            workMode = try container.decodeIfPresent(WorkMode.self, forKey: .workMode) ?? .sandbox
         }
     }
 

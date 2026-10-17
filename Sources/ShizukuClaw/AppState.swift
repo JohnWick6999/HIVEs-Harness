@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Observation
 import ShizukuCore
 
@@ -19,6 +20,8 @@ final class AppState {
     var taskPlan: TaskPlan = .empty
     /// 当前会话的上下文用量/压缩状态
     var contextState: SessionContextState = .empty
+    /// 等待用户处理的审批请求
+    var pendingApproval: ApprovalRequest?
 
     // MARK: - 依赖
 
@@ -27,6 +30,13 @@ final class AppState {
     private let configStore: ConfigStore
     private let keychain: KeychainStore
     private let personas: PersonaStore
+
+    // MARK: - 审批内部状态
+
+    private var approvalContinuation: CheckedContinuation<ApprovalDecision, Never>?
+    private var approvalTimeout: Task<Void, Never>?
+    /// “始终允许”去重集合(应用会话内有效)
+    private var autoApproved: Set<String> = []
 
     init() {
         // 数据目录:~/Library/Application Support/ShizukuClaw/
@@ -80,6 +90,65 @@ final class AppState {
         loadHistory()
     }
 
+    // MARK: - 工作模式与审批
+
+    /// 切换工作模式;进入完全控制前必须通过系统身份验证(Touch ID / 登录密码)。
+    func setWorkMode(_ mode: WorkMode) async {
+        guard mode != config.agent.workMode else { return }
+        if mode == .full {
+            guard await authenticate(reason: "切换到完全控制模式,允许 Agent 写入工作区外文件并执行本机命令") else {
+                errorMessage = "身份验证未通过,工作模式保持不变"
+                return
+            }
+        }
+        config.agent.workMode = mode
+        saveConfig()
+        errorMessage = nil
+    }
+
+    private func authenticate(reason: String) async -> Bool {
+        let context = LAContext()
+        context.localizedCancelTitle = "取消"
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            // 没有可用的生物认证/密码时,不允许进入完全控制
+            errorMessage = "此设备不支持系统身份验证,无法进入完全控制模式"
+            return false
+        }
+        do {
+            return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+        } catch {
+            return false
+        }
+    }
+
+    /// Agent 调用:等待用户在界面上选择一次/始终/拒绝。
+    func requestApproval(_ request: ApprovalRequest) async -> ApprovalDecision {
+        if autoApproved.contains(request.key) { return .once }
+        return await withCheckedContinuation { continuation in
+            approvalContinuation = continuation
+            pendingApproval = request
+            approvalTimeout?.cancel()
+            approvalTimeout = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(300))
+                guard !Task.isCancelled else { return }
+                self?.resolveApproval(.reject)
+            }
+        }
+    }
+
+    /// 由审批条按钮调用。
+    func resolveApproval(_ decision: ApprovalDecision) {
+        approvalTimeout?.cancel()
+        approvalTimeout = nil
+        if decision == .always, let request = pendingApproval {
+            autoApproved.insert(request.key)
+        }
+        pendingApproval = nil
+        approvalContinuation?.resume(returning: decision)
+        approvalContinuation = nil
+    }
+
     /// 发送消息并调用 Agent(无 API Key 时核心自动走本地回退)
     func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,7 +164,11 @@ final class AppState {
             config: config,
             keychain: keychain,
             personas: personas,
-            workspace: workspace
+            workspace: workspace,
+            approvalHandler: { [weak self] request in
+                guard let self else { return .reject }
+                return await self.requestApproval(request)
+            }
         )
         do {
             let result = try await loop.invoke(message: trimmed, persona: selectedPersona)
@@ -120,7 +193,13 @@ final class AppState {
         typingPending = ""
         typingTask?.cancel()
         typingTask = nil
-        defer { isBusy = false }
+        defer {
+            // 流结束/取消时,未决审批一律按拒绝处理,避免 Agent 永久挂起
+            if pendingApproval != nil {
+                resolveApproval(.reject)
+            }
+            isBusy = false
+        }
 
         // 占位助手消息,流式期间原地更新
         let placeholderID = UUID()
@@ -131,7 +210,11 @@ final class AppState {
             config: config,
             keychain: keychain,
             personas: personas,
-            workspace: workspace
+            workspace: workspace,
+            approvalHandler: { [weak self] request in
+                guard let self else { return .reject }
+                return await self.requestApproval(request)
+            }
         )
         do {
             for try await event in await loop.stream(message: trimmed, persona: selectedPersona) {

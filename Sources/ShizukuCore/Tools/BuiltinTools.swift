@@ -22,14 +22,16 @@ public enum BuiltinTools {
             ]
         )
         private let safePath: SafePath
+        private let policy: FileAccessPolicy
 
-        public init(workspace: URL) {
+        public init(workspace: URL, policy: FileAccessPolicy = FileAccessPolicy(mode: .sandbox)) {
             self.safePath = SafePath(workspace: workspace)
+            self.policy = policy
         }
 
         public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             let raw = arguments["path"]?.value as? String ?? "."
-            let target = try safePath.resolve(raw)
+            let target = try policy.resolveRead(raw, safePath: safePath)
             guard FileManager.default.fileExists(atPath: target.path) else {
                 return ToolResult(text: "目录不存在: \(raw)")
             }
@@ -69,18 +71,24 @@ public enum BuiltinTools {
             ]
         )
         private let safePath: SafePath
+        private let policy: FileAccessPolicy
         public let maxChars: Int
 
-        public init(workspace: URL, maxChars: Int = 12_000) {
+        public init(
+            workspace: URL,
+            maxChars: Int = 12_000,
+            policy: FileAccessPolicy = FileAccessPolicy(mode: .sandbox)
+        ) {
             self.safePath = SafePath(workspace: workspace)
             self.maxChars = maxChars
+            self.policy = policy
         }
 
         public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             guard let raw = arguments["path"]?.value as? String else {
                 throw ToolError.invalidArguments("缺少 path 参数")
             }
-            let target = try safePath.resolve(raw)
+            let target = try policy.resolveRead(raw, safePath: safePath)
             guard FileManager.default.fileExists(atPath: target.path) else {
                 return ToolResult(text: "文件不存在: \(raw)")
             }
@@ -122,17 +130,19 @@ public enum BuiltinTools {
             ]
         )
         private let safePath: SafePath
+        private let policy: FileAccessPolicy
 
-        public init(workspace: URL) {
+        public init(workspace: URL, policy: FileAccessPolicy = FileAccessPolicy(mode: .sandbox)) {
             self.safePath = SafePath(workspace: workspace)
+            self.policy = policy
         }
 
-        public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
+        public func run(arguments: [String: AnyCodable]) async throws -> ToolResult {
             guard let raw = arguments["path"]?.value as? String else {
                 throw ToolError.invalidArguments("缺少 path 参数")
             }
             let content = arguments["content"]?.value as? String ?? ""
-            let target = try safePath.resolve(raw)
+            let target = try await policy.resolveWrite(raw, safePath: safePath)
             try FileManager.default.createDirectory(
                 at: target.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -140,7 +150,7 @@ public enum BuiltinTools {
             try content.write(to: target, atomically: true, encoding: .utf8)
             // 产出文件随结果返回,UI 渲染为可点击卡片
             return ToolResult(
-                text: "已写入 \(raw) (\(content.count) chars)",
+                text: "已写入 \(target.path) (\(content.count) chars)",
                 files: [target]
             )
         }

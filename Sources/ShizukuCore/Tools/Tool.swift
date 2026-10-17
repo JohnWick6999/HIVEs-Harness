@@ -7,8 +7,25 @@ public enum ToolError: Error, Sendable, Equatable {
     case invalidArguments(String)
     /// 路径逃逸工作区沙箱
     case pathEscape(String)
+    /// 当前工作模式不允许
+    case permissionDenied(String)
+    /// 用户拒绝审批
+    case approvalDenied(String)
     /// 执行失败
     case execution(String)
+}
+
+extension ToolError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .notFound(let name): return "未知工具: \(name)"
+        case .invalidArguments(let message): return "参数错误: \(message)"
+        case .pathEscape(let path): return "路径超出工作区或当前模式不允许: \(path)"
+        case .permissionDenied(let message): return message
+        case .approvalDenied(let message): return message
+        case .execution(let message): return message
+        }
+    }
 }
 
 /// 工具执行结果:文本 + 产出文件(可点击打开)。

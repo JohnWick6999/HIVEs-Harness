@@ -78,6 +78,8 @@ public actor AgentLoop {
     private let clientOverride: (any LLMClient)?
     /// 测试注入:固定工具集(nil 时按 workspace/persona 构建内置工具)
     private let toolsOverride: [any Tool]?
+    /// 审批回调(由平台壳注入);nil 时外部写入/执行一律拒绝
+    private let approvalHandler: ApprovalHandler?
 
     /// 历史保留条数(对齐原版 40)
     private let historyLimit = 40
@@ -92,7 +94,8 @@ public actor AgentLoop {
         personas: PersonaStore = PersonaStore(),
         workspace: URL = FileManager.default.temporaryDirectory,
         clientOverride: (any LLMClient)? = nil,
-        toolsOverride: [any Tool]? = nil
+        toolsOverride: [any Tool]? = nil,
+        approvalHandler: ApprovalHandler? = nil
     ) {
         self.store = store
         self.config = config
@@ -101,6 +104,7 @@ public actor AgentLoop {
         self.workspace = workspace
         self.clientOverride = clientOverride
         self.toolsOverride = toolsOverride
+        self.approvalHandler = approvalHandler
     }
 
     // MARK: - 会话准备
@@ -179,7 +183,7 @@ public actor AgentLoop {
         )
     }
 
-    /// 人格 prompt + 长期记忆 + 工具使用约束 + 任务计划。
+    /// 人格 prompt + 长期记忆 + 工作模式 + 工具使用约束 + 任务计划。
     private func buildSystemPrompt(persona: String, memories: [MemoryItem], plan: TaskPlan) -> String {
         let memoryText = memories.isEmpty
             ? "暂无长期记忆。"
@@ -187,8 +191,12 @@ public actor AgentLoop {
         let personaPrompt = personas.load(id: persona)?.buildSystemPrompt() ?? config.agent.systemPrompt
         let planText = plan.promptText
         let planSection = planText.isEmpty ? "" : "\n\n\(planText)"
+        let mode = config.agent.workMode
         return """
         \(personaPrompt)
+
+        [工作模式]
+        \(mode.title):\(mode.detail)
 
         [长期记忆]
         \(memoryText)
@@ -196,8 +204,9 @@ public actor AgentLoop {
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
         \(imageHint)
 
-        文件工具(list_dir/read_file/write_file)只能访问工作区目录,无法访问桌面、文稿等系统位置。
-        若用户要求写到桌面或其他目录,将文件写入工作区,并在回复中明确说明文件的实际完整路径。
+        文件工具(list_dir/read_file)可以读取任意本地路径,包括工作区外的绝对路径;不能因为路径在工作区外就声称无法读取。
+        写入范围由工作模式决定:安全模式只能写工作区,完全控制模式写工作区外会先请求用户审批。
+        若用户要求写到桌面或其他目录,在安全模式下将文件写入工作区并说明实际完整路径;在完全控制模式下可以直接写入。
 
         [任务计划]
         多步骤执行任务开始时使用 todowrite 创建具体任务列表,只将当前步骤标为 in_progress,每完成一个步骤就更新。
@@ -244,15 +253,20 @@ public actor AgentLoop {
         for tool in tools {
             registry.register(tool)
         }
-        return (registry, tools.map(\.spec))
+        // 只把当前模式允许的工具暴露给模型;执行阶段还会再校验一次
+        let specs = tools
+            .filter { config.agent.workMode.allows(tool: $0.name) }
+            .map(\.spec)
+        return (registry, specs)
     }
 
     /// 内置工具集(绑定当前人格、工作区、会话与运行标识)
     private func buildDefaultTools(session: Session) -> [any Tool] {
+        let policy = FileAccessPolicy(mode: config.agent.workMode, approval: approvalHandler)
         var tools: [any Tool] = [
-            BuiltinTools.ListDirTool(workspace: workspace),
-            BuiltinTools.ReadFileTool(workspace: workspace),
-            BuiltinTools.WriteFileTool(workspace: workspace),
+            BuiltinTools.ListDirTool(workspace: workspace, policy: policy),
+            BuiltinTools.ReadFileTool(workspace: workspace, policy: policy),
+            BuiltinTools.WriteFileTool(workspace: workspace, policy: policy),
             BuiltinTools.SearchMemoryTool(store: store, persona: session.persona),
             BuiltinTools.AddMemoryTool(store: store, persona: session.persona),
             TaskPlanTools.TodoWriteTool(
@@ -502,6 +516,20 @@ public actor AgentLoop {
         _ call: ToolCall,
         registry: ToolRegistry
     ) async -> (trace: ToolTrace, message: ChatMessage) {
+        let mode = config.agent.workMode
+        guard mode.allows(tool: call.name) else {
+            return denied(call, reason: "当前为\(mode.title)模式,不允许执行工具 \(call.name)。")
+        }
+        if mode.requiresExecutionApproval, WorkMode.externalExecutionTools.contains(call.name) {
+            let decision = await askApproval(
+                .toolExecution,
+                detail: "\(call.name)\n\(call.arguments.prefix(800))"
+            )
+            guard decision != .reject else {
+                return denied(call, reason: "用户拒绝执行工具 \(call.name)。")
+            }
+        }
+
         let arguments = Self.parseArguments(call.arguments)
         let result: ToolResult
         do {
@@ -522,6 +550,25 @@ public actor AgentLoop {
             toolName: call.name
         )
         return (trace, message)
+    }
+
+    private func denied(_ call: ToolCall, reason: String) -> (trace: ToolTrace, message: ChatMessage) {
+        let message = ChatMessage(
+            role: .tool,
+            content: .text(reason),
+            toolCallID: call.id,
+            toolName: call.name
+        )
+        return (
+            ToolTrace(tool: call.name, arguments: call.arguments, result: reason),
+            message
+        )
+    }
+
+    /// 请求审批;未注入处理器时默认拒绝(安全兜底)。
+    private func askApproval(_ kind: ApprovalKind, detail: String) async -> ApprovalDecision {
+        guard let approvalHandler else { return .reject }
+        return await approvalHandler(ApprovalRequest(kind: kind, detail: detail))
     }
 
     // MARK: - 任务计划生命周期

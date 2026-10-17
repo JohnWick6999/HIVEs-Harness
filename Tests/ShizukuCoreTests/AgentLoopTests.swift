@@ -8,6 +8,7 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
     private var responses: [LLMResponse]
     private var streamResponses: [[LLMStreamChunk]]
     private var captured: [[ChatMessage]] = []
+    private var capturedTools: [[String]] = []
 
     init(responses: [LLMResponse], streamResponses: [[LLMStreamChunk]] = []) {
         self.responses = responses
@@ -17,6 +18,7 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
     func chat(messages: [ChatMessage], tools: [ToolSpec]?) async throws -> LLMResponse {
         lock.withLock {
             captured.append(messages)
+            capturedTools.append(tools?.map(\.name) ?? [])
             if responses.isEmpty { return LLMResponse(content: "(默认回复)") }
             return responses.removeFirst()
         }
@@ -26,6 +28,7 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
         AsyncThrowingStream { continuation in
             let chunks = lock.withLock {
                 captured.append(messages)
+                capturedTools.append(tools?.map(\.name) ?? [])
                 if streamResponses.isEmpty { return [LLMStreamChunk]() }
                 return streamResponses.removeFirst()
             }
@@ -40,6 +43,10 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
 
     func capturedMessages() -> [[ChatMessage]] {
         lock.withLock { captured }
+    }
+
+    func capturedToolNames() -> [[String]] {
+        lock.withLock { capturedTools }
     }
 }
 

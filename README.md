@@ -18,6 +18,7 @@
 | 🔧 工具调用 | 文件读写(工作区沙箱)、记忆检索/写入、本地 Agent CLI(macOS) | ✅ |
 | ✅ 任务计划 | todowrite/todoread,计划持久化 + 实时进度面板,运行绑定防跨轮串写 | ✅ |
 | 🧮 上下文压缩 | CJK token 估算,85% 自动摘要压缩,保留最近两轮,原始消息不删除,顶栏用量环 | ✅ |
+| 🛡️ 工作模式与审批 | 对话/安全/完全控制三档;读任意路径、写受模式限制;外部写入与执行需审批;Touch ID 解锁 | ✅ |
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
 | 🔌 MCP 客户端 | JSON-RPC 2.0 over stdio,服务器注册表,工具自动注册进 Agent | ✅ |
 | 🧩 插件系统 | plugin.json 清单扫描 + 安全策略(网络/执行时限/域名白名单) | ✅ |
@@ -58,7 +59,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,72 项用例覆盖全部核心模块
+- 测试:swift-testing,80 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

@@ -19,6 +19,10 @@ struct ChatView: View {
             }
             messageList
             Divider()
+            if let approval = state.pendingApproval {
+                approvalBar(approval)
+                Divider()
+            }
             inputBar
         }
         .sheet(isPresented: $showSettings) {
@@ -59,6 +63,8 @@ struct ChatView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
 
+            modeMenu
+
             Spacer()
 
             contextIndicator
@@ -85,6 +91,81 @@ struct ChatView: View {
     private var personaName: String {
         state.availablePersonas.first { $0.id == state.selectedPersona }?.meta.name
             ?? state.selectedPersona
+    }
+
+    // MARK: - 工作模式与审批
+
+    private var modeMenu: some View {
+        Menu {
+            ForEach(WorkMode.allCases, id: \.rawValue) { mode in
+                Button {
+                    Task { await state.setWorkMode(mode) }
+                } label: {
+                    if mode == state.config.agent.workMode {
+                        Label(mode.title, systemImage: "checkmark")
+                    } else {
+                        Text(mode.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: modeIcon)
+                Text(state.config.agent.workMode.title)
+                    .font(.caption)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(modeColor.opacity(0.12), in: Capsule())
+            .foregroundStyle(modeColor)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(state.config.agent.workMode.detail)
+    }
+
+    private var modeIcon: String {
+        switch state.config.agent.workMode {
+        case .chat: return "bubble.left"
+        case .sandbox: return "lock.shield"
+        case .full: return "exclamationmark.shield"
+        }
+    }
+
+    private var modeColor: Color {
+        switch state.config.agent.workMode {
+        case .chat: return .blue
+        case .sandbox: return .green
+        case .full: return .orange
+        }
+    }
+
+    private func approvalBar(_ request: ApprovalRequest) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.raised.fill")
+                    .foregroundStyle(.orange)
+                Text(request.kind.title)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+            }
+            Text(request.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+            HStack {
+                Spacer()
+                Button("拒绝") { state.resolveApproval(.reject) }
+                    .keyboardShortcut(.cancelAction)
+                Button("始终允许") { state.resolveApproval(.always) }
+                Button("允许一次") { state.resolveApproval(.once) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.orange.opacity(0.08))
     }
 
     // MARK: - 上下文用量
