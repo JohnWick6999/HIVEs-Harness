@@ -1,74 +1,90 @@
 import SwiftUI
 import HiveHarnessCore
 
-/// 对话右侧的轮次轨:悬停显示摘要,点击跳到该轮,可滚动查看更早历史。
+/// 右侧对话缩略轨:固定间距短横线 + 悬停左侧摘要,点击跳到对应轮次。
 struct ConversationRail: View {
     let turns: [ConversationTurn]
     let onSelect: (UUID) -> Void
 
     @State private var hovered: UUID?
 
+    private let markHeight: CGFloat = 16
+    private let spacing: CGFloat = 2
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 7) {
+            VStack(spacing: spacing) {
                 ForEach(turns) { turn in
                     marker(turn)
                 }
             }
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
         }
-        .frame(width: 32)
-        .background(alignment: .leading) {
-            Rectangle()
-                .fill(HiveTheme.hairline)
-                .frame(width: 1)
-                .padding(.vertical, 18)
-        }
+        .scrollClipDisabled()
+        .frame(width: 28)
+        .frame(maxHeight: 420)
+        .mask(
+            LinearGradient(
+                colors: [.clear, .black, .black, .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .padding(.vertical, -18)
+        )
+        .padding(.trailing, 10)
     }
 
     private func marker(_ turn: ConversationTurn) -> some View {
-        Button {
+        let active = turn.id == turns.last?.id
+        let hot = hovered == turn.id
+        return Button {
             onSelect(turn.targetMessageID)
         } label: {
-            ZStack {
-                Circle()
-                    .fill(hovered == turn.id ? HiveTheme.amber.opacity(0.20) : Color.primary.opacity(0.04))
-                    .frame(width: 20, height: 20)
-                Text("\(turn.index)")
-                    .font(.system(size: 8, weight: .semibold, design: .rounded))
-                    .foregroundStyle(hovered == turn.id ? HiveTheme.amberDeep : .secondary)
-            }
-            .contentShape(Rectangle())
+            Capsule()
+                .fill(hot || active ? HiveTheme.amber : Color.primary.opacity(0.20))
+                .frame(width: hot || active ? 20 : 12, height: 2)
+                .frame(width: 28, height: 16, alignment: .trailing)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { inside in
             hovered = inside ? turn.id : (hovered == turn.id ? nil : hovered)
         }
-        .popover(isPresented: Binding(
-            get: { hovered == turn.id },
-            set: { if !$0, hovered == turn.id { hovered = nil } }
-        ), arrowEdge: .leading) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("第 \(turn.index) 轮")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(HiveTheme.amberDeep)
-                Text(turn.userText)
-                    .font(.caption)
-                    .lineLimit(4)
-                if !turn.assistantText.isEmpty {
-                    Divider()
-                    Text(turn.assistantText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(5)
-                }
-                Text("点击跳到这一轮")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        .overlay(alignment: .leading) {
+            if hot {
+                preview(turn)
+                    .offset(x: -312)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    .allowsHitTesting(false)
             }
-            .padding(12)
-            .frame(width: 280, alignment: .leading)
         }
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .help("跳到第 \(turn.index) 轮")
+    }
+
+    private func preview(_ turn: ConversationTurn) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("第 \(turn.index) 轮")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(HiveTheme.amberDeep)
+            Text(turn.userText)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+            if !turn.assistantText.isEmpty {
+                Text(turn.assistantText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(width: 300, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(HiveTheme.hairline, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
     }
 }
