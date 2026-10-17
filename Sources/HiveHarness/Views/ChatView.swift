@@ -21,6 +21,9 @@ struct ChatView: View {
     @State private var showUsage = false
     @State private var scrollRequest: ScrollRequest?
     @State private var scrollPosition: UUID?
+    @State private var activeTurnID: UUID?
+    @State private var showJumpToLatest = false
+    @State private var scrollToLatestToken = 0
     @State private var artifactPreview: Artifact?
     @State private var artifactWindow: Artifact?
 
@@ -46,9 +49,34 @@ struct ChatView: View {
                 }
                 ZStack(alignment: .leading) {
                     messageList
+                        .overlay(alignment: .topTrailing) {
+                            if showJumpToLatest {
+                                Button {
+                                    activeTurnID = state.conversationTurns.last?.id
+                                    scrollToLatestToken += 1
+                                    showJumpToLatest = false
+                                } label: {
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(HiveTheme.amberDeep)
+                                        .frame(width: 32, height: 32)
+                                        .hiveGlass(
+                                            corner: 16,
+                                            tint: HiveTheme.amber.opacity(0.08),
+                                            interactive: true
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help("回到最新对话")
+                                .padding(.top, 12)
+                                .padding(.trailing, 22)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
                     let turns = state.conversationTurns
                     if !turns.isEmpty {
-                        ConversationRail(turns: turns) { id in
+                        ConversationRail(turns: turns, activeTurnID: activeTurnID) { id in
+                            activeTurnID = id
                             scrollRequest = ScrollRequest(
                                 messageID: id,
                                 nonce: (scrollRequest?.nonce ?? 0) + 1
@@ -91,7 +119,19 @@ struct ChatView: View {
             .animation(.easeInOut(duration: 0.18), value: artifactPreview?.id)
         }
         .onAppear {
-            NSLog("CHAT_MSG_COUNT \(state.messages.count) ROLES \(state.messages.map(\.role.rawValue).joined(separator: ","))")
+            if activeTurnID == nil {
+                activeTurnID = state.conversationTurns.last?.id
+            }
+        }
+        .onChange(of: state.messages.count) { _, _ in
+            if !showJumpToLatest {
+                activeTurnID = state.conversationTurns.last?.id
+            }
+        }
+        .onChange(of: showJumpToLatest) { _, scrolledUp in
+            if !scrolledUp {
+                activeTurnID = state.conversationTurns.last?.id
+            }
         }
         .preferredColorScheme(HiveAppearance(rawValue: appearance)?.colorScheme)
         .sheet(isPresented: $showSettings) {
@@ -524,9 +564,15 @@ struct ChatView: View {
                 .scrollTargetLayout()
             }
             .scrollPosition(id: $scrollPosition, anchor: .top)
+            .modifier(ScrollBottomObserver(scrolledUp: $showJumpToLatest))
             .background(ScrollbarAutohide())
             .onChange(of: state.messages.last?.content.plainText) {
                 withAnimation {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            }
+            .onChange(of: scrollToLatestToken) { _, _ in
+                withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
@@ -641,21 +687,6 @@ struct ChatView: View {
                             .padding(.trailing, 2)
                     }
 
-                    Button(action: send) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 30, height: 30)
-                            .background(
-                                sendDisabled
-                                    ? AnyShapeStyle(Color.secondary.opacity(0.25))
-                                    : AnyShapeStyle(HiveTheme.gradient),
-                                in: Circle()
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(sendDisabled)
-                    .help("发送 (Enter)")
                 }
 
                 HStack(spacing: 8) {
@@ -675,6 +706,7 @@ struct ChatView: View {
 
                     contextIndicator
                     modelPicker
+                    sendButton
                 }
             }
             .padding(.horizontal, 12)
@@ -706,6 +738,24 @@ struct ChatView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.02))
+    }
+
+    private var sendButton: some View {
+        Button(action: send) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(
+                    sendDisabled
+                        ? AnyShapeStyle(Color.secondary.opacity(0.25))
+                        : AnyShapeStyle(HiveTheme.gradient),
+                    in: Circle()
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(sendDisabled)
+        .help("发送 (Enter)")
     }
 
     private var sendDisabled: Bool {
@@ -1047,6 +1097,27 @@ struct ChatView: View {
         pendingAttachments = []
         Task {
             await state.sendStreaming(text, attachments: attachments)
+        }
+    }
+}
+
+// MARK: - 滚动状态
+
+private struct ScrollBottomObserver: ViewModifier {
+    @Binding var scrolledUp: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geometry in
+                let maxOffset = max(0, geometry.contentSize.height - geometry.containerSize.height)
+                return maxOffset - geometry.contentOffset.y > 160
+            } action: { _, value in
+                if scrolledUp != value {
+                    scrolledUp = value
+                }
+            }
+        } else {
+            content
         }
     }
 }

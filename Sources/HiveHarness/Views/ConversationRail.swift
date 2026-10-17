@@ -4,6 +4,7 @@ import HiveHarnessCore
 /// 左侧对话缩略轨:固定列短横线;整条区域命中,悬停摘要,点击跳转。
 struct ConversationRail: View {
     let turns: [ConversationTurn]
+    let activeTurnID: UUID?
     let onSelect: (UUID) -> Void
 
     @State private var hovered: UUID?
@@ -65,11 +66,11 @@ struct ConversationRail: View {
     }
 
     private func mark(_ turn: ConversationTurn) -> some View {
-        let active = turn.id == turns.last?.id
+        let active = turn.id == (activeTurnID ?? turns.last?.id)
         let hot = hovered == turn.id
         return Capsule()
-            .fill(hot || active ? HiveTheme.amber : Color.primary.opacity(0.26))
-            .frame(width: hot || active ? 20 : 13, height: 2)
+            .fill(hot || active ? HiveTheme.amber : Color.primary.opacity(0.48))
+            .frame(width: hot || active ? 22 : 16, height: hot || active ? 3 : 2)
             .frame(width: railWidth, alignment: .trailing)
             .help("跳到第 \(turn.index) 轮")
     }
