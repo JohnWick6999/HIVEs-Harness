@@ -17,6 +17,8 @@ public struct Skill: Sendable, Equatable, Identifiable {
     /// 使用次数与最近使用时间(来自 `.usage.json`)
     public var useCount: Int
     public var lastUsedAt: Date?
+    /// 市场安装来源(来自 `.marketplace.json`)
+    public var marketplace: MarketplaceProvenance?
 
     public var isStale: Bool {
         guard let lastUsedAt else { return false }
@@ -36,7 +38,8 @@ public struct Skill: Sendable, Equatable, Identifiable {
         enabled: Bool = true,
         hasHandler: Bool = false,
         useCount: Int = 0,
-        lastUsedAt: Date? = nil
+        lastUsedAt: Date? = nil,
+        marketplace: MarketplaceProvenance? = nil
     ) {
         self.id = id
         self.name = name
@@ -51,6 +54,7 @@ public struct Skill: Sendable, Equatable, Identifiable {
         self.hasHandler = hasHandler
         self.useCount = useCount
         self.lastUsedAt = lastUsedAt
+        self.marketplace = marketplace
     }
 
     public var catalogLine: String {
@@ -270,6 +274,11 @@ public final class SkillStore: @unchecked Sendable {
             let hasHandler = ["handler.sh", "handler.py"].contains {
                 fm.fileExists(atPath: entry.appendingPathComponent($0).path)
             }
+            let provenance: MarketplaceProvenance? = {
+                let url = entry.appendingPathComponent(".marketplace.json")
+                guard let data = try? Data(contentsOf: url) else { return nil }
+                return try? JSONDecoder().decode(MarketplaceProvenance.self, from: data)
+            }()
             result.append(
                 Skill(
                     id: id,
@@ -282,7 +291,8 @@ public final class SkillStore: @unchecked Sendable {
                     directory: entry,
                     isBuiltin: false,
                     enabled: enabled,
-                    hasHandler: hasHandler
+                    hasHandler: hasHandler,
+                    marketplace: provenance
                 )
             )
         }

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 @testable import ShizukuCore
 import Testing
@@ -272,6 +273,73 @@ struct MarketplaceTests {
         let installed = try installer.install(plan)
         #expect(installed.count == 1)
         #expect(store.load(id: "skill-creator") != nil)
+    }
+
+    private func digest(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    @Test("GitHub blob SHA-1 校验算法")
+    func gitBlobHash() {
+        #expect(
+            MarketplaceInstaller.gitBlobSHA1("hello\n")
+                == "ce013625030ba8dba906f756967f9e9ca394464a"
+        )
+    }
+
+    @Test("ModelScope Sha256 校验 + 安装来源清单")
+    func integrityProvenance() async throws {
+        let content = """
+        ---
+        name: verified-skill
+        description: 已校验技能
+        ---
+
+        1. 读取输入
+        2. 输出结果
+        """
+        let hash = digest(content)
+        MarketplaceMockURLProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/repo/files") {
+                return httpJSON(request, [
+                    "Code": 200,
+                    "Data": ["Files": [
+                        ["Path": "SKILL.md", "Type": "blob", "Size": content.utf8.count, "Sha256": hash],
+                    ]],
+                ])
+            }
+            if path.hasSuffix("/resolve/master/SKILL.md") {
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(content.utf8))
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "modelscope:@acme/verified",
+            name: "verified",
+            summary: "",
+            source: .modelScope,
+            installURL: "https://modelscope.cn/skills/@acme/verified"
+        )
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 1)
+        #expect(plan.files[0].sha256 == hash)
+        #expect(plan.files[0].remoteHash == hash)
+        _ = try installer.install(plan)
+
+        let skill = try #require(store.load(id: "verified"))
+        #expect(skill.marketplace?.itemID == item.id)
+        #expect(skill.marketplace?.sha256 == hash)
+        #expect(skill.marketplace?.remoteHash == hash)
     }
 
     @Test("Claude marketplace.json 解析与展开")

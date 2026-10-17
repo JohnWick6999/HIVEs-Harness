@@ -4,11 +4,13 @@ public struct ModelScopeFile: Sendable, Equatable {
     public var path: String
     public var type: String
     public var size: Int
+    public var sha256: String
 
-    public init(path: String, type: String, size: Int) {
+    public init(path: String, type: String, size: Int, sha256: String = "") {
         self.path = path
         self.type = type
         self.size = size
+        self.sha256 = sha256
     }
 }
 
@@ -57,7 +59,8 @@ public struct ModelScopeMarketplaceClient: Sendable {
             return ModelScopeFile(
                 path: path,
                 type: raw["Type"] as? String ?? "blob",
-                size: raw["Size"] as? Int ?? 0
+                size: raw["Size"] as? Int ?? 0,
+                sha256: raw["Sha256"] as? String ?? ""
             )
         }
     }

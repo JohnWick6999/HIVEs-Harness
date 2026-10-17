@@ -142,6 +142,13 @@ struct SkillsSettingsView: View {
                                 .padding(.vertical, 1)
                                 .background(.blue.opacity(0.12), in: Capsule())
                         }
+                        if skill.marketplace != nil {
+                            Text("市场")
+                                .font(.caption2)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(.green.opacity(0.12), in: Capsule())
+                        }
                         if skill.hasHandler {
                             Text("含 handler")
                                 .font(.caption2)
@@ -294,6 +301,25 @@ private struct SkillDetailView: View {
             }
             Text(skill.description)
                 .font(.callout)
+            if let market = skill.marketplace {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Label("市场安装", systemImage: "shippingbox")
+                        Text(market.source)
+                        Text("ref \(market.ref)")
+                        Text("sha256 \(market.sha256.prefix(12))…")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    if let url = URL(string: market.installURL) {
+                        Link("打开来源", destination: url)
+                            .font(.caption2)
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.green.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            }
             Divider()
             ScrollView {
                 Text(skill.body)

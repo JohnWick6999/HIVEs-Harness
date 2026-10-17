@@ -22,7 +22,7 @@
 | 🛡️ 工作模式与审批 | 对话/安全/完全控制三档;读任意路径、写受模式限制;外部写入与执行需审批;Touch ID 解锁 | ✅ |
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
 | 🧰 工作台 | 工作区文件浏览/预览、Git status + diff、Shell(完全控制 + 确认) | ✅ |
-| 🏪 插件市场 | 43 个内置卡片 + GitHub + 魔搭;Claude `marketplace.json` 展开、子目录安装、SKILL.md / MCP 预检 | ✅ |
+| 🏪 插件市场 | 43 个内置卡片 + GitHub + 魔搭;marketplace.json 展开、子目录安装、Git blob/Sha256 校验、来源清单 | ✅ |
 | 🌐 本地网关 | 127.0.0.1 上的 OpenAI 兼容 `/v1/models` + `/v1/chat/completions`,可选 Bearer Token | ✅ |
 | 🧬 技能自进化 | 每 10 次工具迭代反思;优先 patch;60 字描述/风险扫描/使用计数/30 天归档;人工批准 | ✅ |
 | 🧾 运行日志 | 本地记录模型/工具/审批/压缩事件,时间线回看与 JSON 导出 | ✅ |
@@ -70,7 +70,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,137 项用例覆盖全部核心模块
+- 测试:swift-testing,138 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

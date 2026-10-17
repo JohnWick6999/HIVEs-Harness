@@ -1,14 +1,27 @@
+import CryptoKit
 import Foundation
 
 public struct MarketplaceInstallFile: Sendable, Equatable {
     public var skillID: String
     public var path: String
     public var content: String
+    /// 下载内容 SHA-256(写入来源清单)
+    public var sha256: String
+    /// 远端声明的校验值(GitHub blob SHA-1 / ModelScope Sha256)
+    public var remoteHash: String?
 
-    public init(skillID: String, path: String, content: String) {
+    public init(
+        skillID: String,
+        path: String,
+        content: String,
+        sha256: String = "",
+        remoteHash: String? = nil
+    ) {
         self.skillID = skillID
         self.path = path
         self.content = content
+        self.sha256 = sha256
+        self.remoteHash = remoteHash
     }
 }
 
@@ -154,6 +167,11 @@ public struct MarketplaceInstaller: Sendable {
                 warnings.append("跳过超大内容: \(entry.path)")
                 continue
             }
+            if let expected = entry.sha, !expected.isEmpty,
+               Self.gitBlobSHA1(content) != expected.lowercased() {
+                warnings.append("Git blob 校验失败,已跳过: \(entry.path)")
+                continue
+            }
             let meta = SkillStore.parseFrontmatter(content).meta
             let declared = (meta["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let parent = URL(fileURLWithPath: entry.path).deletingLastPathComponent().lastPathComponent
@@ -162,7 +180,13 @@ public struct MarketplaceInstaller: Sendable {
                 : declared
             let id = Self.uniqueID(Self.sanitize(base), used: &usedIDs)
             files.append(
-                MarketplaceInstallFile(skillID: id, path: entry.path, content: content)
+                MarketplaceInstallFile(
+                    skillID: id,
+                    path: entry.path,
+                    content: content,
+                    sha256: Self.sha256(content),
+                    remoteHash: entry.sha
+                )
             )
         }
 
@@ -215,6 +239,21 @@ public struct MarketplaceInstaller: Sendable {
                 atomically: true,
                 encoding: .utf8
             )
+            let provenance = MarketplaceProvenance(
+                itemID: plan.item.id,
+                name: plan.item.name,
+                source: plan.item.source.rawValue,
+                installURL: plan.item.installURL ?? "",
+                ref: plan.ref,
+                sha256: file.sha256,
+                remoteHash: file.remoteHash
+            )
+            if let data = try? JSONEncoder().encode(provenance) {
+                try? data.write(
+                    to: directory.appendingPathComponent(".marketplace.json"),
+                    options: .atomic
+                )
+            }
             installed.append(try skillStore.install(from: directory))
         }
         return installed
@@ -274,6 +313,11 @@ public struct MarketplaceInstaller: Sendable {
                 warnings.append("跳过空或超大内容: \(entry.path)")
                 continue
             }
+            let digest = Self.sha256(content)
+            if !entry.sha256.isEmpty, entry.sha256.lowercased() != digest {
+                warnings.append("ModelScope Sha256 校验失败,已跳过: \(entry.path)")
+                continue
+            }
             let meta = SkillStore.parseFrontmatter(content).meta
             let declared = (meta["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let parent = URL(fileURLWithPath: entry.path).deletingLastPathComponent().lastPathComponent
@@ -282,7 +326,13 @@ public struct MarketplaceInstaller: Sendable {
                 : declared
             let id = Self.uniqueID(Self.sanitize(base), used: &usedIDs)
             installFiles.append(
-                MarketplaceInstallFile(skillID: id, path: entry.path, content: content)
+                MarketplaceInstallFile(
+                    skillID: id,
+                    path: entry.path,
+                    content: content,
+                    sha256: digest,
+                    remoteHash: entry.sha256.isEmpty ? nil : entry.sha256
+                )
             )
         }
         guard !installFiles.isEmpty else { throw MarketplaceError.noInstallableSkill }
@@ -413,6 +463,22 @@ public struct MarketplaceInstaller: Sendable {
             }
         }
         return nil
+    }
+
+    static func sha256(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    /// GitHub tree 里的 blob sha 是 Git blob SHA-1,不是内容 SHA-1。
+    static func gitBlobSHA1(_ text: String) -> String {
+        let data = Data(text.utf8)
+        var payload = Data("blob \(data.count)\u{0}".utf8)
+        payload.append(data)
+        return Insecure.SHA1.hash(data: payload)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     static func sanitize(_ raw: String) -> String {
