@@ -10,13 +10,14 @@ struct SettingsView: View {
     @AppStorage(HiveTheme.showUsageBarKey) private var showUsageBar = true
 
     enum Section: String, CaseIterable, Identifiable {
-        case appearance, models, agent, personas, mcp, skills, gateway, memory, about
+        case appearance, artifacts, models, agent, personas, mcp, skills, gateway, memory, about
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .appearance: return "外观"
+            case .artifacts: return "产物"
             case .models: return "模型"
             case .agent: return "Agent"
             case .personas: return "人格"
@@ -31,6 +32,7 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .appearance: return "paintpalette"
+            case .artifacts: return "doc.richtext"
             case .models: return "cpu"
             case .agent: return "gearshape.2"
             case .personas: return "person.2"
@@ -118,6 +120,8 @@ struct SettingsView: View {
         switch section {
         case .appearance:
             appearanceSettings
+        case .artifacts:
+            artifactSettings
         case .models:
             ModelsSettingsView()
         case .agent:
@@ -250,6 +254,89 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
             }
             .padding(.trailing, 8)
+        }
+    }
+
+    // MARK: - 产物打开方式
+
+    private var artifactSettings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("产物打开方式")
+                        .font(.title2.weight(.bold))
+                    Text("Agent 交付文件后,点击消息下方的玻璃卡片会按这里的设置打开。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(ArtifactKind.allCases.enumerated()), id: \.element.id) { index, kind in
+                        HStack(spacing: 10) {
+                            Image(systemName: kind.icon)
+                                .frame(width: 20)
+                                .foregroundStyle(HiveTheme.amberDeep)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(kind.title)
+                                    .font(.callout)
+                                Text(defaultHint(kind))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Picker("", selection: artifactModeBinding(kind)) {
+                                ForEach(ArtifactOpenMode.allCases) { mode in
+                                    Label(mode.title, systemImage: mode.icon).tag(mode)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 150)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        if index < ArtifactKind.allCases.count - 1 {
+                            Divider().padding(.leading, 42)
+                        }
+                    }
+                }
+                .hiveCard(padding: 4, corner: 12)
+
+                HStack {
+                    Text("网页使用内置 WKWebView;PDF/Office/图片使用 QuickLook;文本和代码使用内置文本查看器。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("全部恢复右侧边栏") {
+                        for kind in ArtifactKind.allCases {
+                            ArtifactPreferences.set(.sidebar, for: kind)
+                            artifactModes[kind] = .sidebar
+                        }
+                    }
+                }
+            }
+            .padding(.trailing, 8)
+        }
+    }
+
+    @State private var artifactModes: [ArtifactKind: ArtifactOpenMode] = [:]
+
+    private func artifactModeBinding(_ kind: ArtifactKind) -> Binding<ArtifactOpenMode> {
+        Binding(
+            get: { artifactModes[kind] ?? ArtifactPreferences.mode(for: kind) },
+            set: { mode in
+                artifactModes[kind] = mode
+                ArtifactPreferences.set(mode, for: kind)
+            }
+        )
+    }
+
+    private func defaultHint(_ kind: ArtifactKind) -> String {
+        switch kind {
+        case .html: return "内置浏览器渲染 HTML"
+        case .pdf, .office: return "内置 QuickLook 文档查看器"
+        case .image: return "内置图片预览"
+        case .text, .code: return "内置文本 / 代码查看器"
+        case .other: return "QuickLook 或系统默认"
         }
     }
 

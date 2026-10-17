@@ -19,6 +19,8 @@
 | 🧠 模型/推理 | 底部切换当前 API 模型、弹出面板 5 档推理粗滑块、能量轨道/彗尾 | ✅ |
 | 🪟 沉浸式界面 | 隐藏标题栏、HIVE'S 品牌、全区域可调 Liquid Glass、主题切换 | ✅ |
 | 📋 Markdown | 标题/列表/引用/代码/分隔线/管道表格 | ✅ |
+| 🪟 内置预览 | WKWebView 网页 + QuickLook 文档/图片 + 右侧产物栏 | ✅ |
+| 🧭 对话轮次轨 | 右侧轮次条,悬停摘要,点击跳转,滚动历史 | ✅ |
 | 📐 可调侧栏 | 拖动右边缘调宽,200–360pt,自动保存 | ✅ |
 | 🗂️ 会话管理 | 重命名、删除、归档/恢复;归档保留聊天记录 | ✅ |
 | 📏 上下文自适应 | 按模型名自动匹配窗口(DeepSeek Flash 100M)、圆环/预算同步 | ✅ |
@@ -194,6 +196,19 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 - **真实生效**:DeepSeek 会发送 `thinking {type}` 与 `reasoning_effort`;工具调用轮次会回传 `reasoning_content`,避免带 tools 时 400
 - DeepSeek 的 `medium` 由服务端映射为 high;`max` 发送 `max`;OpenAI 兼容模型的 `max` 发送 high
 - 档位越高,左侧喷溅与彗尾越强;高级别不再绘制环状光晕
+
+## 🖥️ 产物预览与对话轨
+
+- Agent 交付文件后,消息下方显示玻璃产物卡片
+- 点击默认在右侧边栏打开:
+  - HTML:内置 WKWebView
+  - PDF / Office / 图片:内置 QuickLook
+  - 文本 / 代码:内置文本查看器
+- 设置 → 产物可为每种类型选择:
+  - 右侧边栏
+  - 独立窗口
+  - 系统默认应用
+- 对话右侧显示轮次轨;悬停查看该轮用户/助手摘要,点击跳转,轨道可滚动查看更早历史
 
 ## 🎛️ 外观与侧栏
 
@@ -412,7 +427,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 221 tests in 46 suites passed
+# 222 tests in 47 suites passed
 ```
 
 ## 🔄 与旧版的关系
