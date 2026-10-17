@@ -28,6 +28,7 @@ enum HiveTheme {
     static let appearanceKey = "appearanceTheme"
     static let glassIntensityKey = "glassIntensity"
     static let sidebarWidthKey = "sidebarWidth"
+    static let showUsageBarKey = "showTokenUsageBar"
     static let defaultGlassIntensity = 0.55
     static let defaultSidebarWidth = 240.0
 }

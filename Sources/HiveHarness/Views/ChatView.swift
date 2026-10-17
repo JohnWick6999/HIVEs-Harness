@@ -16,6 +16,7 @@ struct ChatView: View {
     @State private var showContext = false
     @AppStorage("sidebarExpanded") private var sidebarExpanded = true
     @AppStorage(HiveTheme.appearanceKey) private var appearance = HiveAppearance.system.rawValue
+    @AppStorage(HiveTheme.showUsageBarKey) private var showUsageBar = true
     @FocusState private var composerFocused: Bool
     @State private var showUsage = false
 
@@ -53,7 +54,9 @@ struct ChatView: View {
                     approvalBar(approval)
                 }
                 inputBar
+                if showUsageBar {
                     usageBar
+                }
                 }
             }
         }
