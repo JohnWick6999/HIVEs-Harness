@@ -10,6 +10,8 @@ public struct MarketplaceProvenance: Codable, Sendable, Equatable {
     public var sha256: String
     /// GitHub blob SHA-1 / ModelScope Sha256(远端声明的校验值)
     public var remoteHash: String?
+    /// 插件在仓库内的子目录
+    public var installPath: String?
     public var installedAt: String
 
     public init(
@@ -20,6 +22,7 @@ public struct MarketplaceProvenance: Codable, Sendable, Equatable {
         ref: String,
         sha256: String,
         remoteHash: String? = nil,
+        installPath: String? = nil,
         installedAt: String = ISO8601DateFormatter().string(from: Date())
     ) {
         self.itemID = itemID
@@ -29,6 +32,7 @@ public struct MarketplaceProvenance: Codable, Sendable, Equatable {
         self.ref = ref
         self.sha256 = sha256
         self.remoteHash = remoteHash
+        self.installPath = installPath
         self.installedAt = installedAt
     }
 }

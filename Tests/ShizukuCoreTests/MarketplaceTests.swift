@@ -27,6 +27,18 @@ final class MarketplaceMockURLProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+final class MutableMarketplaceContent: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: String
+
+    init(_ value: String) { storage = value }
+
+    var value: String {
+        get { lock.withLock { storage } }
+        set { lock.withLock { storage = newValue } }
+    }
+}
+
 private func marketplaceSession() -> URLSession {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MarketplaceMockURLProtocol.self]
@@ -340,6 +352,75 @@ struct MarketplaceTests {
         #expect(skill.marketplace?.itemID == item.id)
         #expect(skill.marketplace?.sha256 == hash)
         #expect(skill.marketplace?.remoteHash == hash)
+    }
+
+    @Test("检查更新并一键更新,更新前自动备份")
+    func updateFlow() async throws {
+        let contentA = """
+        ---
+        name: updatable
+        description: v1
+        ---
+
+        1. 版本一
+        """
+        let contentB = """
+        ---
+        name: updatable
+        description: v2
+        ---
+
+        1. 版本二
+        2. 新增步骤
+        """
+        let box = MutableMarketplaceContent(contentA)
+
+        MarketplaceMockURLProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/repo/files") {
+                return httpJSON(request, [
+                    "Code": 200,
+                    "Data": ["Files": [
+                        ["Path": "SKILL.md", "Type": "blob", "Size": box.value.utf8.count, "Sha256": SHA256.hash(data: Data(box.value.utf8)).map { String(format: "%02x", $0) }.joined()],
+                    ]],
+                ])
+            }
+            if path.hasSuffix("/resolve/master/SKILL.md") {
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(box.value.utf8))
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "modelscope:@acme/updatable",
+            name: "updatable",
+            summary: "",
+            source: .modelScope,
+            installURL: "https://modelscope.cn/skills/@acme/updatable"
+        )
+        _ = try installer.install(try await installer.plan(for: item))
+        let installed = try #require(store.load(id: "updatable"))
+        #expect(installed.body.contains("版本一"))
+
+        box.value = contentB
+        let status = try await installer.checkUpdate(for: installed)
+        guard case .available = status else {
+            Issue.record("expected update available")
+            return
+        }
+
+        let updated = try await installer.update(installed)
+        #expect(updated.first?.body.contains("版本二") == true)
+        #expect(store.load(id: "updatable")?.body.contains("版本二") == true)
+        #expect(!store.versions(id: "updatable").isEmpty)
     }
 
     @Test("Claude marketplace.json 解析与展开")

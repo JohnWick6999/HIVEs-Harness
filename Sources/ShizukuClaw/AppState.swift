@@ -686,6 +686,16 @@ final class AppState {
         reloadSkills()
     }
 
+    func checkSkillUpdate(_ skill: Skill) async throws -> MarketplaceUpdateStatus {
+        try await marketplaceInstaller.checkUpdate(for: skill)
+    }
+
+    func updateSkill(_ skill: Skill) async throws -> [Skill] {
+        let installed = try await marketplaceInstaller.update(skill)
+        skills = skillStore.all()
+        return installed
+    }
+
     @discardableResult
     func installSkill(from url: URL) throws -> Skill {
         let skill = try skillStore.install(from: url)

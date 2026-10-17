@@ -286,6 +286,9 @@ private struct SkillDetailView: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
     @State private var versions: [SkillVersion] = []
+    @State private var updateStatus: MarketplaceUpdateStatus?
+    @State private var checkingUpdate = false
+    @State private var updateError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -329,6 +332,41 @@ private struct SkillDetailView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if skill.marketplace != nil {
+                Divider()
+                HStack(spacing: 8) {
+                    Text("市场更新")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    Button(checkingUpdate ? "检查中…" : "检查更新") {
+                        Task { await checkUpdate() }
+                    }
+                    .disabled(checkingUpdate)
+                    if case .available = updateStatus {
+                        Button("更新到最新") {
+                            Task { await updateSkill() }
+                        }
+                    }
+                }
+                switch updateStatus {
+                case .upToDate:
+                    Text("已是最新版本。").font(.caption2).foregroundStyle(.green)
+                case let .available(current, latest):
+                    Text("有新版本：\(current.prefix(8))… → \(latest.prefix(8))…")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                case .unknown:
+                    Text("无法检查更新(缺少来源或远端条目)。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                case nil:
+                    EmptyView()
+                }
+                if let updateError {
+                    Text(updateError).font(.caption2).foregroundStyle(.red)
+                }
+            }
+
             if !skill.isBuiltin {
                 Divider()
                 HStack {
@@ -375,5 +413,29 @@ private struct SkillDetailView: View {
         .task {
             versions = state.skillVersions(skill.id)
         }
+    }
+
+    private func checkUpdate() async {
+        checkingUpdate = true
+        updateError = nil
+        do {
+            updateStatus = try await state.checkSkillUpdate(skill)
+        } catch {
+            updateStatus = .unknown
+            updateError = error.localizedDescription
+        }
+        checkingUpdate = false
+    }
+
+    private func updateSkill() async {
+        checkingUpdate = true
+        updateError = nil
+        do {
+            _ = try await state.updateSkill(skill)
+            dismiss()
+        } catch {
+            updateError = error.localizedDescription
+        }
+        checkingUpdate = false
     }
 }

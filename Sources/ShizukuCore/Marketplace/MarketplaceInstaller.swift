@@ -1,6 +1,12 @@
 import CryptoKit
 import Foundation
 
+public enum MarketplaceUpdateStatus: Sendable, Equatable {
+    case upToDate
+    case available(current: String, latest: String)
+    case unknown
+}
+
 public struct MarketplaceInstallFile: Sendable, Equatable {
     public var skillID: String
     public var path: String
@@ -246,7 +252,8 @@ public struct MarketplaceInstaller: Sendable {
                 installURL: plan.item.installURL ?? "",
                 ref: plan.ref,
                 sha256: file.sha256,
-                remoteHash: file.remoteHash
+                remoteHash: file.remoteHash,
+                installPath: plan.item.installPath
             )
             if let data = try? JSONEncoder().encode(provenance) {
                 try? data.write(
@@ -257,6 +264,50 @@ public struct MarketplaceInstaller: Sendable {
             installed.append(try skillStore.install(from: directory))
         }
         return installed
+    }
+
+    // MARK: - 更新检查
+
+    /// 对比已安装技能与远端最新内容的 sha256。
+    public func checkUpdate(for skill: Skill) async throws -> MarketplaceUpdateStatus {
+        guard let provenance = skill.marketplace,
+              let source = MarketplaceSource(rawValue: provenance.source)
+        else { return .unknown }
+        let item = MarketplaceItem(
+            id: provenance.itemID,
+            name: provenance.name,
+            summary: "",
+            source: source,
+            kind: .plugin,
+            installURL: provenance.installURL,
+            installPath: provenance.installPath
+        )
+        let plan = try await plan(for: item)
+        let match = plan.files.first { $0.skillID == skill.id }
+        guard let match else { return .unknown }
+        if match.sha256 == provenance.sha256 {
+            return .upToDate
+        }
+        return .available(current: provenance.sha256, latest: match.sha256)
+    }
+
+    /// 更新已安装技能(覆盖前由 SkillStore 自动备份)。
+    @discardableResult
+    public func update(_ skill: Skill) async throws -> [Skill] {
+        guard let provenance = skill.marketplace,
+              let source = MarketplaceSource(rawValue: provenance.source)
+        else { throw MarketplaceError.invalidPackage("该技能没有市场来源") }
+        let item = MarketplaceItem(
+            id: provenance.itemID,
+            name: provenance.name,
+            summary: "",
+            source: source,
+            kind: .plugin,
+            installURL: provenance.installURL,
+            installPath: provenance.installPath
+        )
+        let plan = try await plan(for: item)
+        return try install(plan)
     }
 
     // MARK: - ModelScope
