@@ -23,33 +23,70 @@ enum HiveTheme {
     static let card = Color.primary.opacity(0.035)
     static let corner: CGFloat = 16
     static let composerCorner: CGFloat = 18
+
+    // 外观偏好(全部走 AppStorage,主窗口与设置实时联动)
+    static let appearanceKey = "appearanceTheme"
+    static let glassIntensityKey = "glassIntensity"
+    static let sidebarWidthKey = "sidebarWidth"
+    static let defaultGlassIntensity = 0.55
+    static let defaultSidebarWidth = 240.0
+}
+
+enum HiveAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .light: return "浅色"
+        case .dark: return "深色"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 }
 
 /// 柔和背景:窗口底色 + 左上暖光 + 右下冷光。
 struct HiveBackground: View {
+    @AppStorage(HiveTheme.glassIntensityKey) private var glassIntensity = HiveTheme.defaultGlassIntensity
+
+    private var aurora: Double {
+        0.55 + min(1, max(0, glassIntensity)) * 0.9
+    }
+
     var body: some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
             RadialGradient(
-                colors: [HiveTheme.honey.opacity(0.13), .clear],
+                colors: [HiveTheme.honey.opacity(0.13 * aurora), .clear],
                 center: .topLeading,
                 startRadius: 10,
                 endRadius: 620
             )
             RadialGradient(
-                colors: [Color.purple.opacity(0.075), .clear],
+                colors: [Color.purple.opacity(0.075 * aurora), .clear],
                 center: .bottomTrailing,
                 startRadius: 40,
                 endRadius: 720
             )
             RadialGradient(
-                colors: [HiveTheme.amber.opacity(0.10), .clear],
+                colors: [HiveTheme.amber.opacity(0.10 * aurora), .clear],
                 center: .topTrailing,
                 startRadius: 30,
                 endRadius: 520
             )
             RadialGradient(
-                colors: [Color.cyan.opacity(0.05), .clear],
+                colors: [Color.cyan.opacity(0.05 * aurora), .clear],
                 center: .bottomLeading,
                 startRadius: 80,
                 endRadius: 460
@@ -100,6 +137,10 @@ struct HiveGlassModifier: ViewModifier {
     var tint: Color?
     var interactive: Bool
 
+    @AppStorage(HiveTheme.glassIntensityKey) private var glassIntensity = HiveTheme.defaultGlassIntensity
+
+    private var strength: Double { min(1, max(0, glassIntensity)) }
+
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
@@ -118,9 +159,9 @@ struct HiveGlassModifier: ViewModifier {
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        .white.opacity(0.14),
+                                        .white.opacity(0.05 + strength * 0.16),
                                         .white.opacity(0.02),
-                                        HiveTheme.amber.opacity(0.035),
+                                        HiveTheme.amber.opacity(0.02 + strength * 0.035),
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -130,23 +171,31 @@ struct HiveGlassModifier: ViewModifier {
                             .allowsHitTesting(false)
                         shape.stroke(
                             LinearGradient(
-                                colors: [.white.opacity(0.42), .white.opacity(0.08), .black.opacity(0.12)],
+                                colors: [
+                                    .white.opacity(0.16 + strength * 0.28),
+                                    .white.opacity(0.06),
+                                    .black.opacity(0.10),
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
                             lineWidth: 0.9
                         )
                         .allowsHitTesting(false)
+                        shape
+                            .fill(Color.white.opacity(0.005 + strength * 0.035))
+                            .blendMode(.plusLighter)
+                            .allowsHitTesting(false)
                     }
                 }
-                .shadow(color: .black.opacity(0.10), radius: 16, y: 6)
+                .shadow(color: .black.opacity(0.06 + strength * 0.10), radius: 10 + strength * 12, y: 4 + strength * 4)
         } else {
             let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content
                 .background(.ultraThinMaterial, in: shape)
                 .background(
                     LinearGradient(
-                        colors: [.white.opacity(0.10), .clear, HiveTheme.amber.opacity(0.045)],
+                        colors: [.white.opacity(0.04 + strength * 0.12), .clear, HiveTheme.amber.opacity(0.025 + strength * 0.03)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
@@ -157,7 +206,7 @@ struct HiveGlassModifier: ViewModifier {
                         shape
                             .fill(
                                 LinearGradient(
-                                    colors: [.white.opacity(0.13), .clear, HiveTheme.amber.opacity(0.03)],
+                                    colors: [.white.opacity(0.05 + strength * 0.14), .clear, HiveTheme.amber.opacity(0.02 + strength * 0.03)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
@@ -165,15 +214,22 @@ struct HiveGlassModifier: ViewModifier {
                             .blendMode(.plusLighter)
                         shape.stroke(
                             LinearGradient(
-                                colors: [.white.opacity(0.38), HiveTheme.hairline, .black.opacity(0.14)],
+                                colors: [
+                                    .white.opacity(0.15 + strength * 0.30),
+                                    HiveTheme.hairline,
+                                    .black.opacity(0.12 + strength * 0.04),
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
                             lineWidth: 0.9
                         )
+                        shape
+                            .fill(Color.white.opacity(0.004 + strength * 0.032))
+                            .blendMode(.plusLighter)
                     }
                 }
-                .shadow(color: .black.opacity(0.12), radius: 18, y: 7)
+                .shadow(color: .black.opacity(0.06 + strength * 0.12), radius: 12 + strength * 14, y: 4 + strength * 4)
         }
     }
 }

@@ -12,6 +12,7 @@ struct ChatView: View {
     @State private var planExpanded = true
     @State private var showContext = false
     @AppStorage("sidebarExpanded") private var sidebarExpanded = true
+    @AppStorage(HiveTheme.appearanceKey) private var appearance = HiveAppearance.system.rawValue
     @FocusState private var composerFocused: Bool
     @State private var showUsage = false
 
@@ -53,6 +54,7 @@ struct ChatView: View {
                 }
             }
         }
+        .preferredColorScheme(HiveAppearance(rawValue: appearance)?.colorScheme)
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environment(state)

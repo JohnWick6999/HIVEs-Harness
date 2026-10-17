@@ -32,6 +32,8 @@ final class AppState {
     /// 当前人格下的会话列表
     var sessions: [SessionRecord] = []
     var archivedSessions: [SessionRecord] = []
+    /// 新建但尚未发送消息的会话:只存在于内存,不计入历史。
+    private var draftSession: SessionRecord?
     /// 当前会话 id
     var currentThreadID: String = ""
     /// 撤销后回填到输入框的草稿
@@ -240,6 +242,7 @@ final class AppState {
 
     /// 载入当前人格的会话列表;旧版 `persona:<id>` 历史会自动登记为“历史会话”。
     func loadSessions() {
+        draftSession = nil
         var list = (try? store.listSessions(persona: selectedPersona)) ?? []
         if list.isEmpty {
             let legacyID = "persona:\(selectedPersona)"
@@ -259,13 +262,14 @@ final class AppState {
             }
         }
         if list.isEmpty {
-            let record = SessionRecord(
+            // 不在数据库里预建空会话;首次发送时由 touchSession 落库。
+            let draft = SessionRecord(
                 id: "s_" + UUID().uuidString.lowercased(),
                 persona: selectedPersona,
                 title: "新会话"
             )
-            try? store.upsertSession(record)
-            list = [record]
+            draftSession = draft
+            list = [draft]
         }
         sessions = list
         archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? []
@@ -276,13 +280,21 @@ final class AppState {
     }
 
     func newSession() {
+        // 已经是空白草稿时不重复创建。
+        if let draft = draftSession,
+           draft.persona == selectedPersona,
+           currentThreadID == draft.id,
+           messages.isEmpty {
+            return
+        }
         let record = SessionRecord(
             id: "s_" + UUID().uuidString.lowercased(),
             persona: selectedPersona,
             title: "新会话"
         )
-        try? store.upsertSession(record)
-        sessions = (try? store.listSessions(persona: selectedPersona)) ?? [record]
+        draftSession = record
+        let stored = (try? store.listSessions(persona: selectedPersona)) ?? []
+        sessions = [record] + stored.filter { $0.id != record.id }
         archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? archivedSessions
         currentThreadID = record.id
         messages = []
@@ -294,6 +306,11 @@ final class AppState {
     }
 
     func selectSession(_ id: String) {
+        if let draft = draftSession, currentThreadID == draft.id, id != draft.id {
+            // 离开空白草稿:直接丢弃,不写入历史。
+            draftSession = nil
+            sessions.removeAll { $0.id == draft.id }
+        }
         guard sessions.contains(where: { $0.id == id }) else { return }
         currentThreadID = id
         lastToolTrace = []
@@ -305,6 +322,15 @@ final class AppState {
     func renameSession(_ id: String, title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if var draft = draftSession, draft.id == id {
+            draft.title = String(trimmed.prefix(80))
+            draft.updatedAt = Date()
+            draftSession = draft
+            if let index = sessions.firstIndex(where: { $0.id == id }) {
+                sessions[index] = draft
+            }
+            return
+        }
         guard var record = (sessions + archivedSessions).first(where: { $0.id == id }) else { return }
         record.title = String(trimmed.prefix(80))
         record.updatedAt = Date()
@@ -314,6 +340,12 @@ final class AppState {
 
     /// 归档会话:数据保留,移出主列表;归档当前会话时自动切到下一个。
     func archiveSession(_ id: String) {
+        if let draft = draftSession, draft.id == id {
+            draftSession = nil
+            sessions.removeAll { $0.id == id }
+            selectNextAfterDraftRemoval()
+            return
+        }
         guard sessions.contains(where: { $0.id == id }) else { return }
         try? store.setSessionArchived(threadID: id, persona: selectedPersona, archived: true)
         if id == currentThreadID {
@@ -338,6 +370,12 @@ final class AppState {
 
     /// 删除指定会话(当前会话被删除时自动切换)。
     func deleteSession(_ id: String) {
+        if let draft = draftSession, draft.id == id {
+            draftSession = nil
+            sessions.removeAll { $0.id == id }
+            selectNextAfterDraftRemoval()
+            return
+        }
         try? store.deleteSession(threadID: id, persona: selectedPersona)
         if id == currentThreadID {
             let remaining = (try? store.listSessions(persona: selectedPersona)) ?? []
@@ -351,8 +389,24 @@ final class AppState {
         refreshSessionLists()
     }
 
+    private func selectNextAfterDraftRemoval() {
+        let stored = (try? store.listSessions(persona: selectedPersona)) ?? []
+        if let next = stored.first {
+            currentThreadID = next.id
+            loadHistory()
+            refreshSessionLists()
+        } else {
+            newSession()
+        }
+    }
+
     private func refreshSessionLists() {
-        sessions = (try? store.listSessions(persona: selectedPersona)) ?? []
+        var active = (try? store.listSessions(persona: selectedPersona)) ?? []
+        if let draft = draftSession {
+            active.removeAll { $0.id == draft.id }
+            active.insert(draft, at: 0)
+        }
+        sessions = active
         archivedSessions = (try? store.listArchivedSessions(persona: selectedPersona)) ?? []
         if sessions.isEmpty {
             newSession()
@@ -447,6 +501,7 @@ final class AppState {
     ) {
         let existing = (try? store.listSessions(persona: persona))?
             .first { $0.id == threadID }
+            ?? (draftSession?.id == threadID ? draftSession : nil)
         let now = Date()
         let trimmedUser = userText.trimmingCharacters(in: .whitespacesAndNewlines)
         let title: String
@@ -465,6 +520,9 @@ final class AppState {
             updatedAt: now
         )
         try? store.upsertSession(record)
+        if draftSession?.id == threadID {
+            draftSession = nil
+        }
         if persona == selectedPersona {
             sessions = (try? store.listSessions(persona: persona)) ?? sessions
             archivedSessions = (try? store.listArchivedSessions(persona: persona)) ?? archivedSessions
