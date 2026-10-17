@@ -69,6 +69,9 @@ public struct MarketplaceInstallPlan: Sendable, Equatable {
 /// 市场安装器:首版只安装 SKILL.md,不执行仓库里的脚本/hook。
 public struct MarketplaceInstaller: Sendable {
     private let github: GitHubMarketplaceClient
+    private let gitlab: GitLabMarketplaceClient
+    private let gitee: GiteeMarketplaceClient
+    private let npm: NpmMarketplaceClient
     private let modelScope: ModelScopeMarketplaceClient
     private let skillStore: SkillStore
     private let mcpDirectory: URL?
@@ -80,6 +83,9 @@ public struct MarketplaceInstaller: Sendable {
         mcpDirectory: URL? = nil
     ) {
         self.github = GitHubMarketplaceClient(session: session, token: githubToken)
+        self.gitlab = GitLabMarketplaceClient(session: session)
+        self.gitee = GiteeMarketplaceClient(session: session)
+        self.npm = NpmMarketplaceClient(session: session)
         self.modelScope = ModelScopeMarketplaceClient(session: session)
         self.skillStore = skillStore
         self.mcpDirectory = mcpDirectory
@@ -103,6 +109,16 @@ public struct MarketplaceInstaller: Sendable {
             return try await planModelScope(item)
         }
 
+        if item.source == .gitLab {
+            return try await planGitLab(item)
+        }
+        if item.source == .gitee {
+            return try await planGitee(item)
+        }
+        if item.source == .npm {
+            return try await planNpm(item)
+        }
+
         guard let target = githubTarget(for: item) else {
             let hint = item.installCommand.map { "该来源提供安装命令: \($0)" } ?? ""
             throw MarketplaceError.unsupportedSource(
@@ -112,17 +128,93 @@ public struct MarketplaceInstaller: Sendable {
         let repository = try await github.repository(owner: target.owner, repo: target.repo)
         let ref = target.ref ?? repository.defaultBranch
         let fullTree = try await github.tree(owner: target.owner, repo: target.repo, ref: ref)
+        let raw: @Sendable (String) async throws -> String = { path in
+            try await github.rawFile(
+                owner: target.owner,
+                repo: target.repo,
+                ref: ref,
+                path: path
+            )
+        }
+        return try await planRemote(
+            item: item,
+            repository: repository,
+            ref: ref,
+            fullTree: fullTree,
+            raw: raw
+        )
+    }
+
+    private func planGitLab(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
+        guard let target = gitTarget(for: item) else {
+            throw MarketplaceError.invalidLink(item.installURL ?? "")
+        }
+        let repository = try await gitlab.repository(owner: target.owner, repo: target.repo)
+        let ref = target.ref ?? repository.defaultBranch
+        let fullTree = try await gitlab.tree(owner: target.owner, repo: target.repo, ref: ref)
+        let raw: @Sendable (String) async throws -> String = { path in
+            try await gitlab.rawFile(owner: target.owner, repo: target.repo, ref: ref, path: path)
+        }
+        return try await planRemote(
+            item: item,
+            repository: repository,
+            ref: ref,
+            fullTree: fullTree,
+            raw: raw
+        )
+    }
+
+    private func planGitee(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
+        guard let target = gitTarget(for: item) else {
+            throw MarketplaceError.invalidLink(item.installURL ?? "")
+        }
+        let repository = try await gitee.repository(owner: target.owner, repo: target.repo)
+        let ref = target.ref ?? repository.defaultBranch
+        let fullTree = try await gitee.tree(owner: target.owner, repo: target.repo, ref: ref)
+        let raw: @Sendable (String) async throws -> String = { path in
+            try await gitee.rawFile(owner: target.owner, repo: target.repo, ref: ref, path: path)
+        }
+        return try await planRemote(
+            item: item,
+            repository: repository,
+            ref: ref,
+            fullTree: fullTree,
+            raw: raw
+        )
+    }
+
+    private func planNpm(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
+        guard let package = npmTarget(item) else {
+            throw MarketplaceError.invalidLink(item.installURL ?? "")
+        }
+        let repository = try await npm.repository(package: package)
+        let fullTree = try await npm.tree(package: package)
+        let raw: @Sendable (String) async throws -> String = { path in
+            try await npm.rawFile(package: package, path: path)
+        }
+        return try await planRemote(
+            item: item,
+            repository: repository,
+            ref: "latest",
+            fullTree: fullTree,
+            raw: raw
+        )
+    }
+
+    /// GitHub / GitLab / Gitee / npm 共用的仓库预检。
+    private func planRemote(
+        item: MarketplaceItem,
+        repository: GitHubRepository,
+        ref: String,
+        fullTree: [GitHubTreeEntry],
+        raw: @escaping @Sendable (String) async throws -> String
+    ) async throws -> MarketplaceInstallPlan {
         let prefix = item.installPath?
             .trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
         let tree = prefix.isEmpty
             ? fullTree
             : fullTree.filter { $0.path == prefix || $0.path.hasPrefix(prefix + "/") }
-        let mcpServers = try await parseMCPServers(
-            tree: tree,
-            owner: target.owner,
-            repo: target.repo,
-            ref: ref
-        )
+        let mcpServers = await parseMCPServers(tree: tree, raw: raw)
 
         let candidates = tree.filter { entry in
             guard entry.type == "blob", entry.path.hasSuffix("SKILL.md") else { return false }
@@ -150,6 +242,13 @@ public struct MarketplaceInstaller: Sendable {
         }
 
         var warnings: [String] = []
+        if tree.contains(where: { $0.path == "package.json" }),
+           let packageJSON = try? await raw("package.json"),
+           let object = try? JSONSerialization.jsonObject(with: Data(packageJSON.utf8)) as? [String: Any],
+           let dsh = object["dsh"] as? [String: Any],
+           dsh["bundle"] != nil {
+            warnings.append("检测到 DSH bundle;忽略 Cordis/TypeScript 代码,只安装声明式 SKILL/MCP。")
+        }
         if candidates.count > 12 {
             warnings.append("仓库包含 \(candidates.count) 个技能,首版只安装前 12 个。")
         }
@@ -171,12 +270,7 @@ public struct MarketplaceInstaller: Sendable {
                 warnings.append("跳过过大文件: \(entry.path)")
                 continue
             }
-            let content = try await github.rawFile(
-                owner: target.owner,
-                repo: target.repo,
-                ref: ref,
-                path: entry.path
-            )
+            let content = try await raw(entry.path)
             guard content.utf8.count <= 512_000 else {
                 warnings.append("跳过超大内容: \(entry.path)")
                 continue
@@ -469,10 +563,8 @@ public struct MarketplaceInstaller: Sendable {
 
     private func parseMCPServers(
         tree: [GitHubTreeEntry],
-        owner: String,
-        repo: String,
-        ref: String
-    ) async throws -> [MCPServerConfig] {
+        raw: @escaping @Sendable (String) async throws -> String
+    ) async -> [MCPServerConfig] {
         let candidates = tree.filter { entry in
             guard entry.type == "blob" else { return false }
             let name = URL(fileURLWithPath: entry.path).lastPathComponent
@@ -482,13 +574,8 @@ public struct MarketplaceInstaller: Sendable {
         var result: [MCPServerConfig] = []
         var seen = Set<String>()
         for entry in candidates {
-            guard let raw = try? await github.rawFile(
-                owner: owner,
-                repo: repo,
-                ref: ref,
-                path: entry.path
-            ) else { continue }
-            for config in Self.parseMCPJSON(raw) where seen.insert(config.id).inserted {
+            guard let content = try? await raw(entry.path) else { continue }
+            for config in Self.parseMCPJSON(content) where seen.insert(config.id).inserted {
                 result.append(config)
             }
         }
@@ -571,6 +658,32 @@ public struct MarketplaceInstaller: Sendable {
     }
 
     // MARK: - 辅助
+
+    private func gitTarget(
+        for item: MarketplaceItem
+    ) -> (owner: String, repo: String, ref: String?)? {
+        guard let raw = item.installURL ?? item.homepage,
+              let link = MarketplaceLinkParser.parse(raw)
+        else { return nil }
+        switch link {
+        case let .gitLab(owner, repo, ref), let .gitee(owner, repo, ref):
+            return (owner, repo, ref)
+        default:
+            return nil
+        }
+    }
+
+    private func npmTarget(_ item: MarketplaceItem) -> String? {
+        if item.id.hasPrefix("npm:") {
+            let package = String(item.id.dropFirst(4))
+            return package.isEmpty ? nil : package
+        }
+        if let url = item.installURL,
+           case let .npm(package) = MarketplaceLinkParser.parse(url) {
+            return package
+        }
+        return nil
+    }
 
     private func githubTarget(
         for item: MarketplaceItem

@@ -71,7 +71,7 @@ struct MarketplaceView: View {
                 .frame(width: 240)
             Picker("来源", selection: $source) {
                 Text("全部").tag(MarketplaceSource?.none)
-                ForEach(MarketplaceSource.allCases.filter { $0 != .web }) { item in
+                ForEach(MarketplaceSource.allCases.filter { ![.web, .gitLab, .gitee, .npm].contains($0) }) { item in
                     Text(item.title).tag(Optional(item))
                 }
             }

@@ -202,8 +202,12 @@ plugin-studio/<id>/
 | Claude/VS Code `mcpServers` 对象 | ✅ 自动转换 |
 | GitHub repo / `tree` / `blob` / `raw` 链接 | ✅ 自动限定子目录 |
 | 直链 `.hiveplugin.json` | ✅ 下载、预览、安装技能 + MCP |
+| GitLab / Gitee 仓库链接 | ✅ 链接导入 + tree/raw 安装 |
+| npm 声明式包（unpkg） | ✅ 只读 package.json/文件,不执行 install 脚本 |
+| DSH bundle 内声明式 SKILL/MCP | ✅ 扫描安装,忽略 Cordis/TS 代码 |
+| DSH market `index.json` | ⏳ 暂不解析 |
 | ModelScope skills 链接 | ✅ |
-| GitLab / Gitee / npm 包 / DSH Cordis 代码插件 | ⏳ 暂不执行代码插件 |
+| DSH Cordis/TypeScript 代码插件 | ⏳ 不执行;可读取声明式资产,不运行 Cordis |
 
 > DSH 的 Creator mode 本质是 Cordis/TypeScript 代码插件(见 [DSH Plugins](https://github.com/deepseek-ai/deepseek-harness));直接执行第三方代码不适合本地 Swift Agent。HIVE 工坊只生成可审计的声明式插件,这是有意取舍。
 
@@ -242,7 +246,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 173 tests in 34 suites passed
+# 179 tests in 34 suites passed
 ```
 
 ## 🔄 与旧版的关系

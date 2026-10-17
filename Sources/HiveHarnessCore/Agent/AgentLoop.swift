@@ -279,6 +279,14 @@ public actor AgentLoop {
             """
         }
         let mode = config.agent.workMode
+        let pluginSection = mode.allows(tool: "create_plugin")
+            ? """
+
+            [插件工坊]
+            当用户要求“做一个插件 / 扩展 / 可复用工具 / 技能包”时,调用 create_plugin,
+            把名称、用途和具体可复用步骤写清楚;不要直接写文件,也不要执行插件代码。
+            """
+            : ""
         return """
         \(personaPrompt)
 
@@ -300,6 +308,8 @@ public actor AgentLoop {
         验证后才标为 completed。中断或失败时保留未完成状态,不要虚报完成;简单问答不需要计划。
 
         \(clarificationSection)
+
+        \(pluginSection)
 
         [技能]
         需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先查看下方索引,再用 run_skill 加载对应指令后执行。

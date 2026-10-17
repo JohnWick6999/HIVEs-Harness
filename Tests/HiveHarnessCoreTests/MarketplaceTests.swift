@@ -122,6 +122,132 @@ struct MarketplaceTests {
         )
     }
 
+    @Test("GitLab / Gitee 链接解析")
+    func otherGitLinkParsing() {
+        #expect(
+            MarketplaceLinkParser.parse("https://gitlab.com/acme/tools")
+                == .gitLab(owner: "acme", repo: "tools", ref: nil)
+        )
+        #expect(
+            MarketplaceLinkParser.parse("https://gitlab.com/acme/tools/-/tree/dev")
+                == .gitLab(owner: "acme", repo: "tools", ref: "dev")
+        )
+        #expect(
+            MarketplaceLinkParser.parse("https://gitee.com/acme/tools")
+                == .gitee(owner: "acme", repo: "tools", ref: nil)
+        )
+    }
+
+    @Test("GitLab 导入与安装预检")
+    func gitLabPlan() async throws {
+        let skill = """
+        ---
+        id: gl-skill
+        name: GitLab 技能
+        description: 来自 GitLab
+        ---
+
+        1. 读取
+        2. 输出
+        """
+        MarketplaceMockURLProtocol.handler = { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("/repository/tree") {
+                return httpJSON(request, [
+                    ["path": "SKILL.md", "type": "blob"],
+                ])
+            }
+            if url.contains("/repository/files/") && url.contains("/raw") {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(skill.utf8))
+            }
+            if url.contains("/api/v4/projects/") {
+                return httpJSON(request, [
+                    "name": "tools",
+                    "description": "gitlab tools",
+                    "default_branch": "main",
+                    "star_count": 3,
+                    "web_url": "https://gitlab.com/acme/tools",
+                ])
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "gitlab:acme/tools",
+            name: "tools",
+            summary: "",
+            source: .gitLab,
+            kind: .plugin,
+            installURL: "https://gitlab.com/acme/tools"
+        )
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 1)
+        #expect(plan.files[0].skillID == "gl-skill")
+    }
+
+    @Test("npm 链接解析与声明式安装")
+    func npmPlan() async throws {
+        #expect(MarketplaceLinkParser.parse("npm:my-skill") == .npm(package: "my-skill"))
+        #expect(
+            MarketplaceLinkParser.parse("https://www.npmjs.com/package/my-skill")
+                == .npm(package: "my-skill")
+        )
+
+        let skill = """
+        ---
+        id: npm-skill
+        name: npm 技能
+        description: 来自 npm
+        ---
+
+        1. 执行
+        """
+        MarketplaceMockURLProtocol.handler = { request in
+            let url = request.url?.absoluteString ?? ""
+            if url.contains("?meta") {
+                return httpJSON(request, [
+                    "files": [["path": "SKILL.md", "type": "file", "size": skill.utf8.count]],
+                ])
+            }
+            if url.contains("/SKILL.md") {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(skill.utf8))
+            }
+            return httpJSON(request, [
+                "name": "my-skill",
+                "version": "1.0.0",
+                "description": "npm skill",
+                "license": "MIT",
+            ])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "npm:my-skill",
+            name: "my-skill",
+            summary: "",
+            source: .npm,
+            kind: .plugin,
+            installURL: "https://www.npmjs.com/package/my-skill"
+        )
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 1)
+        #expect(plan.files[0].skillID == "npm-skill")
+        #expect(plan.ref == "latest")
+    }
+
     @Test("直链 .hiveplugin 解析、导入与安装")
     func hivePluginBundle() async throws {
         #expect(

@@ -20,6 +20,7 @@ final class AppState {
     var taskPlan: TaskPlan = .empty
     /// 当前会话的上下文用量/压缩状态
     var contextState: SessionContextState = .empty
+    var showPluginStudio = false
     var usageStats: UsageStats = .zero
     var lastRunUsage: LLMUsage = .zero
     /// 等待用户处理的审批请求
@@ -490,7 +491,7 @@ final class AppState {
                 return await self.requestClarification(request)
             },
             clarificationMode: config.agent.clarificationMode,
-            extraTools: mcpTools + skillTools,
+            extraTools: mcpTools + skillTools + [CreatePluginTool(service: pluginStudio)],
             skillCatalog: skillCatalogText
         )
         do {
@@ -511,6 +512,10 @@ final class AppState {
                     modelCalls: result.modelCalls,
                     toolCalls: result.trace.count
                 )
+                if result.trace.contains(where: { $0.tool == "create_plugin" }) {
+                    reloadPluginProjects()
+                    showPluginStudio = true
+                }
             }
             touchSession(
                 userText: trimmed,
@@ -585,7 +590,7 @@ final class AppState {
                 return await self.requestClarification(request)
             },
             clarificationMode: config.agent.clarificationMode,
-            extraTools: mcpTools + skillTools,
+            extraTools: mcpTools + skillTools + [CreatePluginTool(service: pluginStudio)],
             skillCatalog: skillCatalogText
         )
         do {
@@ -629,6 +634,10 @@ final class AppState {
                             modelCalls: result.modelCalls,
                             toolCalls: result.trace.count
                         )
+                        if result.trace.contains(where: { $0.tool == "create_plugin" }) {
+                            reloadPluginProjects()
+                            showPluginStudio = true
+                        }
                     }
                     updateAssistantMessage(id: placeholderID, text: result.reply)
                     if requestThread == currentThreadID {
@@ -898,6 +907,10 @@ final class AppState {
         try pluginStudio.exportBundle(project: project)
     }
 
+    func exportPluginMarketplaceIndex() throws -> Data {
+        try pluginStudio.exportMarketplaceIndex(projects: pluginProjects)
+    }
+
     func importPlugin(data: Data) throws -> PluginProject {
         let project = try pluginStudio.importBundle(data: data)
         reloadPluginProjects()
@@ -1114,7 +1127,7 @@ final class AppState {
             personas: personas,
             workspace: workspace,
             approvalHandler: { _ in .reject },
-            extraTools: mcpTools + skillTools,
+            extraTools: mcpTools + skillTools + [CreatePluginTool(service: pluginStudio)],
             skillCatalog: skillCatalogText
         )
         do {

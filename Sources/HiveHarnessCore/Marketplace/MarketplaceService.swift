@@ -3,6 +3,9 @@ import Foundation
 /// 市场聚合服务:内置目录 + GitHub + ModelScope,统一去重排序并短时缓存。
 public actor MarketplaceService {
     private let github: GitHubMarketplaceClient
+    private let gitlab: GitLabMarketplaceClient
+    private let gitee: GiteeMarketplaceClient
+    private let npm: NpmMarketplaceClient
     private let modelScope: ModelScopeMarketplaceClient
     private let session: URLSession
     private let builtin: [MarketplaceItem]
@@ -12,6 +15,9 @@ public actor MarketplaceService {
     public init(githubToken: String? = nil, session: URLSession = .shared) {
         self.session = session
         self.github = GitHubMarketplaceClient(session: session, token: githubToken)
+        self.gitlab = GitLabMarketplaceClient(session: session)
+        self.gitee = GiteeMarketplaceClient(session: session)
+        self.npm = NpmMarketplaceClient(session: session)
         self.modelScope = ModelScopeMarketplaceClient(session: session)
         self.builtin = Self.loadBuiltin()
     }
@@ -196,6 +202,51 @@ public actor MarketplaceService {
             return item
         case .modelScopeModel:
             throw MarketplaceError.unsupportedSource("ModelScope 模型页暂不支持作为技能安装")
+        case let .gitLab(owner, repo, ref):
+            let repository = try await gitlab.repository(owner: owner, repo: repo)
+            let url = ref.map { "https://gitlab.com/\(owner)/\(repo)/-/tree/\($0)" }
+                ?? "https://gitlab.com/\(owner)/\(repo)"
+            return MarketplaceItem(
+                id: "gitlab:\(owner)/\(repo)".lowercased(),
+                name: repo,
+                summary: repository.description,
+                author: owner,
+                source: .gitLab,
+                kind: .plugin,
+                stars: repository.stars,
+                homepage: repository.htmlURL,
+                installURL: url,
+                iconURL: repository.avatarURL
+            )
+        case let .gitee(owner, repo, ref):
+            let repository = try await gitee.repository(owner: owner, repo: repo)
+            let url = ref.map { "https://gitee.com/\(owner)/\(repo)/tree/\($0)" }
+                ?? "https://gitee.com/\(owner)/\(repo)"
+            return MarketplaceItem(
+                id: "gitee:\(owner)/\(repo)".lowercased(),
+                name: repo,
+                summary: repository.description,
+                author: owner,
+                source: .gitee,
+                kind: .plugin,
+                stars: repository.stars,
+                homepage: repository.htmlURL,
+                installURL: url,
+                iconURL: repository.avatarURL
+            )
+        case .npm(let package):
+            let repository = try await npm.repository(package: package)
+            return MarketplaceItem(
+                id: "npm:\(package)",
+                name: package,
+                summary: repository.description,
+                author: repository.fullName.hasPrefix("npm") ? "" : repository.fullName,
+                source: .npm,
+                kind: .plugin,
+                license: repository.license,
+                homepage: repository.htmlURL,
+                installURL: "https://www.npmjs.com/package/\(package)"
+            )
         case .hivePlugin(let url):
             guard let requestURL = URL(string: url) else {
                 throw MarketplaceError.invalidLink(raw)

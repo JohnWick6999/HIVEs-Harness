@@ -4,6 +4,9 @@ public enum MarketplaceSource: String, Codable, Sendable, CaseIterable, Identifi
     case builtin
     case github
     case modelScope
+    case gitLab
+    case gitee
+    case npm
     case web
 
     public var id: String { rawValue }
@@ -13,6 +16,9 @@ public enum MarketplaceSource: String, Codable, Sendable, CaseIterable, Identifi
         case .builtin: return "内置"
         case .github: return "GitHub"
         case .modelScope: return "魔搭"
+        case .gitLab: return "GitLab"
+        case .gitee: return "Gitee"
+        case .npm: return "npm"
         case .web: return "直链"
         }
     }
@@ -166,6 +172,10 @@ public enum MarketplaceLinkParser {
     public static func parse(_ raw: String) -> MarketplaceLink? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        if text.lowercased().hasPrefix("npm:") {
+            let package = String(text.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return package.isEmpty ? nil : .npm(package: package)
+        }
         if !text.contains("://") {
             text = "https://" + text
         }
@@ -196,6 +206,34 @@ public enum MarketplaceLinkParser {
             var repo = parts[1]
             if repo.hasSuffix(".git") { repo.removeLast(4) }
             return .github(owner: parts[0], repo: repo, ref: parts[2])
+        }
+
+        if host == "gitlab.com" || host == "www.gitlab.com" {
+            guard parts.count >= 2 else { return nil }
+            var repo = parts[1]
+            if repo.hasSuffix(".git") { repo.removeLast(4) }
+            var ref: String?
+            if parts.count >= 4, parts[2] == "-", parts[3] == "tree", parts.count >= 5 {
+                ref = parts[4]
+            }
+            return .gitLab(owner: parts[0], repo: repo, ref: ref)
+        }
+
+        if host == "gitee.com" || host == "www.gitee.com" {
+            guard parts.count >= 2 else { return nil }
+            var repo = parts[1]
+            if repo.hasSuffix(".git") { repo.removeLast(4) }
+            var ref: String?
+            if parts.count >= 4, parts[2] == "tree" {
+                ref = parts[3]
+            }
+            return .gitee(owner: parts[0], repo: repo, ref: ref)
+        }
+
+        if host == "npmjs.com" || host == "www.npmjs.com" {
+            guard parts.count >= 2, parts[0] == "package" else { return nil }
+            let package = parts.dropFirst().joined(separator: "/")
+            return package.isEmpty ? nil : .npm(package: package)
         }
 
         if host == "modelscope.cn" || host == "www.modelscope.cn" {
@@ -264,6 +302,9 @@ public enum MarketplaceLink: Sendable, Equatable {
     case github(owner: String, repo: String, ref: String?)
     case modelScopeSkill(owner: String, name: String)
     case modelScopeModel(owner: String, name: String)
+    case gitLab(owner: String, repo: String, ref: String?)
+    case gitee(owner: String, repo: String, ref: String?)
+    case npm(package: String)
     case hivePlugin(url: String)
 
     public var rawURL: String {
@@ -274,6 +315,12 @@ public enum MarketplaceLink: Sendable, Equatable {
             return "https://modelscope.cn/skills/\(owner)/\(name)"
         case .modelScopeModel(let owner, let name):
             return "https://modelscope.cn/models/\(owner)/\(name)"
+        case .gitLab(let owner, let repo, _):
+            return "https://gitlab.com/\(owner)/\(repo)"
+        case .gitee(let owner, let repo, _):
+            return "https://gitee.com/\(owner)/\(repo)"
+        case .npm(let package):
+            return "https://www.npmjs.com/package/\(package)"
         case .hivePlugin(let url):
             return url
         }

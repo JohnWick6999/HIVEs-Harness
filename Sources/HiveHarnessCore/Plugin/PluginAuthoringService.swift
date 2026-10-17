@@ -90,6 +90,38 @@ public struct PluginAuthoringService: Sendable {
         return project
     }
 
+    /// 自然语言创建:名称 + 用途 + 模型生成的步骤,直接落成技能包。
+    public func createCustom(
+        name: String,
+        description: String,
+        instructions: String
+    ) throws -> PluginProject {
+        let project = try create(name: name, template: .skillPack)
+        var manifest = project.manifest
+        manifest.description = description
+        let path = manifest.skills.first ?? "skills/\(manifest.id)/SKILL.md"
+        let body = instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "1. 先确认输入与目标。\n2. 按步骤执行并验证。\n3. 输出结论与下一步。"
+            : instructions
+        let content = """
+        ---
+        id: \(manifest.id)-skill
+        name: \(manifest.name)
+        description: \(description)
+        version: \(manifest.version)
+        author: \(manifest.author.isEmpty ? "You" : manifest.author)
+        ---
+
+        \(body)
+        """
+        try writeFile(project: project, path: path, content: content)
+        try writeManifest(manifest, to: project.root)
+        guard let refreshed = loadProject(root: project.root) else {
+            throw PluginAuthoringError.io("创建后无法读取项目")
+        }
+        return refreshed
+    }
+
     public func deleteProject(id: String) throws {
         let target = root.appendingPathComponent(id, isDirectory: true)
         guard FileManager.default.fileExists(atPath: target.path) else {
@@ -258,6 +290,30 @@ public struct PluginAuthoringService: Sendable {
             try MCPConfigLoader.save(existing, directory: mcpDirectory)
         }
         return installed
+    }
+
+    /// 生成可托管的 Claude 兼容 marketplace.json 索引(相对目录 source)。
+    public func exportMarketplaceIndex(
+        projects: [PluginProject],
+        name: String = "HIVE Plugin Studio"
+    ) throws -> Data {
+        let plugins: [[String: Any]] = projects.map { project in
+            [
+                "name": project.manifest.id,
+                "description": project.manifest.description,
+                "version": project.manifest.version,
+                "author": project.manifest.author,
+                "source": "./\(project.manifest.id)",
+                "tags": project.manifest.tags,
+                "category": "hive",
+            ]
+        }
+        let payload: [String: Any] = [
+            "name": name,
+            "owner": ["name": "HIVE"],
+            "plugins": plugins,
+        ]
+        return try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
     }
 
     // MARK: - 导出 / 导入

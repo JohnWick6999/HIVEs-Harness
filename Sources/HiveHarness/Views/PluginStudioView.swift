@@ -88,6 +88,7 @@ struct PluginStudioView: View {
             } label: {
                 Label("导入", systemImage: "square.and.arrow.down")
             }
+            Button("市场索引") { exportMarketplace() }
             Button("关闭") { dismiss() }
         }
         .padding(12)
@@ -306,6 +307,21 @@ struct PluginStudioView: View {
             if panel.runModal() == .OK, let url = panel.url {
                 try data.write(to: url, options: .atomic)
                 message = "已导出 \(url.lastPathComponent)"
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func exportMarketplace() {
+        do {
+            let data = try state.exportPluginMarketplaceIndex()
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.json]
+            panel.nameFieldStringValue = "marketplace.json"
+            if panel.runModal() == .OK, let url = panel.url {
+                try data.write(to: url, options: .atomic)
+                message = "已导出市场索引;连同插件目录一起托管即可"
             }
         } catch {
             self.error = error.localizedDescription

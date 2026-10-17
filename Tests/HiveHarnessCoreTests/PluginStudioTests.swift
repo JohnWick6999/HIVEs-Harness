@@ -71,6 +71,52 @@ struct PluginStudioTests {
         #expect(installed.count == 1)
     }
 
+    @Test("create_plugin:自然语言生成可校验插件")
+    func naturalLanguageCreation() async throws {
+        let root = try studioRoot()
+        let service = PluginAuthoringService(root: root)
+        let project = try service.createCustom(
+            name: "周报整理",
+            description: "把本周工作整理成周报",
+            instructions: "1. 收集本周完成项。\n2. 按项目分组。\n3. 输出风险与下周计划。"
+        )
+        #expect(project.manifest.name == "周报整理")
+        #expect(project.manifest.description == "把本周工作整理成周报")
+        let report = service.validate(project: project)
+        #expect(report.canInstall)
+        let skill = try #require(project.files.first { $0.hasSuffix("SKILL.md") })
+        let text = try service.readFile(project: project, path: skill)
+        #expect(text.contains("收集本周完成项"))
+
+        let tool = CreatePluginTool(service: service)
+        let result = try await tool.run(arguments: [
+            "name": AnyCodable("代码审查助手"),
+            "description": AnyCodable("按清单审查改动"),
+            "instructions": AnyCodable("1. 读 diff\n2. 找风险\n3. 给修复建议"),
+        ])
+        #expect(result.text.contains("代码审查助手"))
+        #expect(service.listProjects().count == 2)
+    }
+
+    @Test("create_plugin 在对话模式不可用,安全模式可用")
+    func creationToolVisibility() {
+        #expect(WorkMode.sandbox.allows(tool: "create_plugin"))
+        #expect(WorkMode.full.allows(tool: "create_plugin"))
+        #expect(!WorkMode.chat.allows(tool: "create_plugin"))
+    }
+
+    @Test("导出 Claude 兼容市场索引")
+    func marketplaceIndex() throws {
+        let root = try studioRoot()
+        let service = PluginAuthoringService(root: root)
+        _ = try service.create(name: "索引一", template: .skillPack)
+        _ = try service.create(name: "索引二", template: .mcpBridge)
+        let data = try service.exportMarketplaceIndex(projects: service.listProjects())
+        let market = try #require(ClaudeMarketplaceParser.parse(data))
+        #expect(market.plugins.count == 2)
+        #expect(market.plugins.allSatisfy { $0.source == .relative("./\($0.name)") })
+    }
+
     @Test("MCP 模板默认停用并可安装")
     func mcpTemplate() throws {
         let root = try studioRoot()

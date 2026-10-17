@@ -57,6 +57,10 @@ struct ChatView: View {
             RunHistoryView()
                 .environment(state)
         }
+        .sheet(isPresented: $state.showPluginStudio) {
+            PluginStudioView()
+                .environment(state)
+        }
         .tint(HiveTheme.amberDeep)
         .onChange(of: state.pendingDraft) { _, draft in
             guard let draft else { return }
