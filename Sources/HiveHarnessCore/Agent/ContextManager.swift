@@ -42,6 +42,10 @@ public struct SessionContextState: Codable, Sendable, Equatable {
     public var prunedTools: Int
     /// 估算所用模型标识
     public var model: String
+    /// 最近一次模型返回的真实 prompt token(若提供)
+    public var actualPromptTokens: Int?
+    /// 最近一次模型返回的真实 completion token
+    public var actualCompletionTokens: Int?
 
     public init(
         summary: String = "",
@@ -53,7 +57,9 @@ public struct SessionContextState: Codable, Sendable, Equatable {
         usagePercent: Double = 0,
         compressedAt: Date? = nil,
         prunedTools: Int = 0,
-        model: String = ""
+        model: String = "",
+        actualPromptTokens: Int? = nil,
+        actualCompletionTokens: Int? = nil
     ) {
         self.summary = summary
         self.coveredCount = coveredCount
@@ -65,11 +71,28 @@ public struct SessionContextState: Codable, Sendable, Equatable {
         self.compressedAt = compressedAt
         self.prunedTools = prunedTools
         self.model = model
+        self.actualPromptTokens = actualPromptTokens
+        self.actualCompletionTokens = actualCompletionTokens
     }
 
     public static let empty = SessionContextState()
 
     public var hasCompaction: Bool { !summary.isEmpty && coveredCount > 0 }
+
+    /// 圆环优先显示真实 prompt token;没有时退回估算。
+    public var displayTokens: Int {
+        if let actualPromptTokens, actualPromptTokens > 0 { return actualPromptTokens }
+        return estimatedTokens
+    }
+
+    public var displayPercent: Double {
+        guard contextLimit > 0 else { return usagePercent }
+        return min(999, Double(displayTokens) / Double(contextLimit) * 100)
+    }
+
+    public var isActualUsage: Bool {
+        (actualPromptTokens ?? 0) > 0
+    }
 }
 
 /// CJK 感知的保守 token 估算(与上游 `context_manager.estimate` 对齐)。
@@ -220,6 +243,9 @@ public struct ContextManager: Sendable {
         state.budget = budget
         state.usagePercent = min(999, Double(tokens) / Double(limit) * 100)
         state.model = model
+        // 新一次请求的估算值先显示;模型返回后由 AgentResult.lastUsage 覆盖为真实值。
+        state.actualPromptTokens = nil
+        state.actualCompletionTokens = nil
         try? store.saveContextState(state, threadID: threadID, persona: persona)
 
         if tokens > budget {

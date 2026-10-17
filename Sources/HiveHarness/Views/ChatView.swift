@@ -289,19 +289,19 @@ struct ChatView: View {
                             Circle()
                                 .stroke(.quaternary, lineWidth: 2.5)
                             Circle()
-                                .trim(from: 0, to: min(1, max(0, state.contextState.usagePercent / 100)))
+                                .trim(from: 0, to: min(1, max(0, state.contextState.displayPercent / 100)))
                                 .stroke(usageColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
                         }
                         .frame(width: 16, height: 16)
-                        Text("\(Int(state.contextState.usagePercent.rounded()))%")
+                        Text("\(Int(state.contextState.displayPercent.rounded()))%")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("上下文用量")
+                .help(state.contextState.isActualUsage ? "上下文用量(模型实际 usage)" : "上下文用量(本地估算)")
                 .popover(isPresented: $showContext, arrowEdge: .bottom) {
                     contextPopover
                 }
@@ -310,7 +310,7 @@ struct ChatView: View {
     }
 
     private var usageColor: Color {
-        let usage = state.contextState.usagePercent
+        let usage = state.contextState.displayPercent
         if usage >= 85 { return .red }
         if usage >= 60 { return .orange }
         return .accentColor
@@ -333,9 +333,22 @@ struct ChatView: View {
                     Text("可用预算")
                     Text("\(state.contextState.budget) tokens")
                 }
+                if let actual = state.contextState.actualPromptTokens, actual > 0 {
+                    GridRow {
+                        Text("上次请求实际")
+                        Text("\(actual) prompt + \(state.contextState.actualCompletionTokens ?? 0) output")
+                            .monospacedDigit()
+                    }
+                }
                 GridRow {
-                    Text("本轮估算")
+                    Text("本地估算")
                     Text("\(state.contextState.estimatedTokens) tokens")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("显示占用")
+                    Text("\(state.contextState.displayTokens) / \(state.contextState.contextLimit) · \(String(format: "%.1f", state.contextState.displayPercent))%")
+                        .monospacedDigit()
                 }
                 GridRow {
                     Text("摘要覆盖")
@@ -343,6 +356,13 @@ struct ChatView: View {
                 }
             }
             .font(.caption)
+
+            Text(state.contextState.isActualUsage
+                 ? "圆环优先使用模型返回的真实 prompt token;本地估算仅作兜底。"
+                 : "当前模型未返回 usage,圆环使用本地估算;下一条消息后会自动校准。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if state.contextState.prunedTools > 0 {
                 Text("本轮节选 \(state.contextState.prunedTools) 条超长工具结果")

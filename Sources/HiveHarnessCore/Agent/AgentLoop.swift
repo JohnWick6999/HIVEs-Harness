@@ -30,6 +30,8 @@ public struct AgentResult: Sendable, Equatable {
     public let usage: LLMUsage
     /// 本轮模型调用轮数(含工具循环)
     public let modelCalls: Int
+    /// 最后一次模型调用的真实 usage(用于上下文占用显示)
+    public let lastUsage: LLMUsage
 
     public init(
         success: Bool,
@@ -40,7 +42,8 @@ public struct AgentResult: Sendable, Equatable {
         trace: [ToolTrace],
         activeModel: String = "",
         usage: LLMUsage = .zero,
-        modelCalls: Int = 1
+        modelCalls: Int = 1,
+        lastUsage: LLMUsage = .zero
     ) {
         self.success = success
         self.persona = persona
@@ -51,6 +54,7 @@ public struct AgentResult: Sendable, Equatable {
         self.activeModel = activeModel
         self.usage = usage
         self.modelCalls = modelCalls
+        self.lastUsage = lastUsage
     }
 }
 
@@ -473,7 +477,7 @@ public actor AgentLoop {
                     modelCalls: 0
                 )
             case let .live(pool, registry, specs):
-                let (reply, traces, engine, activeModel, usage, modelCalls) = try await runToolLoop(
+                let (reply, traces, engine, activeModel, usage, modelCalls, lastUsage) = try await runToolLoop(
                     session: session,
                     pool: pool,
                     registry: registry,
@@ -506,7 +510,8 @@ public actor AgentLoop {
                     trace: traces,
                     activeModel: activeModel,
                     usage: usage,
-                    modelCalls: modelCalls
+                    modelCalls: modelCalls,
+                    lastUsage: lastUsage
                 )
             }
         } catch {
@@ -582,7 +587,7 @@ public actor AgentLoop {
                     modelCalls: 0
                 )))
             case let .live(pool, registry, specs):
-                let (reply, traces, engine, activeModel, usage, modelCalls) = try await runToolLoop(
+                let (reply, traces, engine, activeModel, usage, modelCalls, lastUsage) = try await runToolLoop(
                     session: session,
                     pool: pool,
                     registry: registry,
@@ -617,7 +622,8 @@ public actor AgentLoop {
                     trace: traces,
                     activeModel: activeModel,
                     usage: usage,
-                    modelCalls: modelCalls
+                    modelCalls: modelCalls,
+                    lastUsage: lastUsage
                 )))
             }
         } catch {
@@ -643,7 +649,8 @@ public actor AgentLoop {
         engine: String,
         activeModel: String,
         usage: LLMUsage,
-        modelCalls: Int
+        modelCalls: Int,
+        lastUsage: LLMUsage
     ) {
         guard let primary = pool.entries.first else {
             throw LLMError.invalidResponse
@@ -657,6 +664,7 @@ public actor AgentLoop {
         var activeModel = primary.id
         var usage = LLMUsage.zero
         var modelCalls = 0
+        var lastUsage = LLMUsage.zero
         let contextManager = ContextManager(
             store: store,
             contextWindow: pool.contextWindow,
@@ -715,6 +723,7 @@ public actor AgentLoop {
                 )
             }
             usage = usage + callUsage
+            lastUsage = callUsage
             modelCalls += 1
             recorder.add(
                 .model,
@@ -731,7 +740,8 @@ public actor AgentLoop {
                     streaming ? "tool-stream" : "tool-loop",
                     activeModel,
                     usage,
-                    modelCalls
+                    modelCalls,
+                    lastUsage
                 )
             }
 
@@ -767,7 +777,7 @@ public actor AgentLoop {
         let limitText = "工具调用轮次过多,已停止。请把问题拆小后再试。"
         recorder.add(.error, title: "轮次上限", detail: limitText, ok: false)
         yield?(.limitReached(limitText))
-        return (limitText, traces, "tool-loop-limit", activeModel, usage, modelCalls)
+        return (limitText, traces, "tool-loop-limit", activeModel, usage, modelCalls, lastUsage)
     }
 
     /// 非流式请求:按模型组顺序回退,返回实际成功的模型 id。
@@ -843,7 +853,8 @@ public actor AgentLoop {
         let prompt = messages.map(\.content.plainText).joined(separator: "\n")
         return LLMUsage(
             promptTokens: TokenEstimator.estimate(prompt),
-            completionTokens: TokenEstimator.estimate(completion)
+            completionTokens: TokenEstimator.estimate(completion),
+            estimated: true
         )
     }
 
