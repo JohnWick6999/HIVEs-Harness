@@ -127,4 +127,22 @@ public struct MCPServerConfig: Codable, Sendable, Equatable, Identifiable {
         self.headers = headers
         self.enabled = enabled
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description, type, command, args, url, headers, enabled
+    }
+
+    /// 兼容精简配置:只写 id/url/type 也能加载。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? id
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? "stdio"
+        command = try container.decodeIfPresent(String.self, forKey: .command) ?? ""
+        args = try container.decodeIfPresent([String].self, forKey: .args) ?? []
+        url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+        headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    }
 }

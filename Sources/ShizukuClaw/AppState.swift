@@ -27,9 +27,11 @@ final class AppState {
 
     let store: SQLiteStore
     let workspace: URL
+    let mcpDirectory: URL
     private let configStore: ConfigStore
     private let keychain: KeychainStore
     private let personas: PersonaStore
+    private let mcpRegistry: MCPRegistry
 
     // MARK: - 审批内部状态
 
@@ -49,8 +51,15 @@ final class AppState {
         personas = PersonaStore()
         // 工作区放在用户可见的 Documents/ShizukuClaw/(Application Support 深处用户找不到)
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        workspace = documents.appendingPathComponent("ShizukuClaw", isDirectory: true)
-        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let ws = documents.appendingPathComponent("ShizukuClaw", isDirectory: true)
+        workspace = ws
+        try? FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+
+        // MCP 配置目录:~/Documents/ShizukuClaw/mcp/servers.json
+        let mcpDir = ws.appendingPathComponent("mcp", isDirectory: true)
+        try? FileManager.default.createDirectory(at: mcpDir, withIntermediateDirectories: true)
+        mcpDirectory = mcpDir
+        mcpRegistry = MCPRegistry(configs: MCPConfigLoader.load(directory: mcpDir))
 
         // 迁移旧工作区文件(Application Support/workspace -> Documents/ShizukuClaw)
         let legacyWorkspace = base.appendingPathComponent("workspace", isDirectory: true)
@@ -58,7 +67,7 @@ final class AppState {
             if let legacyFiles = try? FileManager.default.contentsOfDirectory(atPath: legacyWorkspace.path) {
                 for file in legacyFiles {
                     let src = legacyWorkspace.appendingPathComponent(file)
-                    let dst = workspace.appendingPathComponent(file)
+                    let dst = ws.appendingPathComponent(file)
                     if !FileManager.default.fileExists(atPath: dst.path) {
                         try? FileManager.default.copyItem(at: src, to: dst)
                     }
@@ -163,6 +172,7 @@ final class AppState {
         errorMessage = nil
         defer { isBusy = false }
 
+        let mcpTools = await loadMCPTools()
         let loop = AgentLoop(
             store: store,
             config: config,
@@ -172,7 +182,8 @@ final class AppState {
             approvalHandler: { [weak self] request in
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
-            }
+            },
+            extraTools: mcpTools
         )
         do {
             let result = try await loop.invoke(message: trimmed, persona: selectedPersona)
@@ -209,6 +220,7 @@ final class AppState {
         let placeholderID = UUID()
         messages.append(ChatMessage(role: .assistant, content: .text(""), id: placeholderID))
 
+        let mcpTools = await loadMCPTools()
         let loop = AgentLoop(
             store: store,
             config: config,
@@ -218,7 +230,8 @@ final class AppState {
             approvalHandler: { [weak self] request in
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
-            }
+            },
+            extraTools: mcpTools
         )
         do {
             for try await event in await loop.stream(message: trimmed, persona: selectedPersona) {
@@ -323,6 +336,19 @@ final class AppState {
 
     func setProviderKey(_ key: String, providerID: String) {
         try? keychain.setString(key, forKey: ModelRegistry.apiKeyKey(providerID: providerID))
+    }
+
+    // MARK: - MCP
+
+    /// 连接启用的 MCP 服务器并返回工具适配器;单个服务器失败会被跳过。
+    func loadMCPTools() async -> [any Tool] {
+        (try? await mcpRegistry.makeAdapters()) ?? []
+    }
+
+    /// 重新读取 `mcp/servers.json` 并重建连接。
+    func reloadMCPConfigs() async {
+        let configs = MCPConfigLoader.load(directory: mcpDirectory)
+        await mcpRegistry.reload(configs: configs)
     }
 
     /// 清空当前对话(仅内存,历史仍保留在 checkpoint 中可刷新恢复)

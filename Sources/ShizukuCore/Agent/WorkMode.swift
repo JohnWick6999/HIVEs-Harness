@@ -30,6 +30,8 @@ public enum WorkMode: String, Codable, Sendable, Equatable, CaseIterable {
 
     /// 当前模式是否允许某个工具出现在模型工具列表中(执行阶段还会再校验一次)。
     public func allows(tool name: String) -> Bool {
+        // MCP 远程工具统一视为外部执行,只有完全控制模式可用
+        if name.hasPrefix("mcp__") { return self == .full }
         switch self {
         case .chat:
             return Self.readOnlyTools.contains(name)
@@ -38,6 +40,11 @@ public enum WorkMode: String, Codable, Sendable, Equatable, CaseIterable {
         case .full:
             return true
         }
+    }
+
+    /// 该工具执行前是否需要用户审批。
+    public static func requiresExecutionApproval(for name: String) -> Bool {
+        externalExecutionTools.contains(name) || name.hasPrefix("mcp__")
     }
 
     /// 允许读取工作区外路径(三种模式一致,对齐上游行为)。

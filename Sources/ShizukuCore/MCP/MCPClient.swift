@@ -15,6 +15,7 @@ public enum MCPError: Error, Sendable, Equatable {
 public actor MCPClient {
     public let config: MCPServerConfig
     private let timeout: Duration
+    private let urlSession: URLSession
 
     // stdio 传输状态
     private var process: Process?
@@ -27,26 +28,39 @@ public actor MCPClient {
     private var lineBuffer = ""
     private var isConnected = false
     private var initialized = false
+    /// Streamable HTTP 会话 id(服务器在 initialize 响应头下发)
+    private var httpSessionID: String?
 
-    public init(config: MCPServerConfig, timeout: Duration = .seconds(30)) {
+    public init(
+        config: MCPServerConfig,
+        timeout: Duration = .seconds(30),
+        urlSession: URLSession = .shared
+    ) {
         self.config = config
         self.timeout = timeout
+        self.urlSession = urlSession
     }
 
     deinit {
         process?.terminate()
     }
 
+    private var isHTTP: Bool {
+        ["http", "sse", "http/sse"].contains(config.type)
+    }
+
     // MARK: - 连接生命周期
 
-    /// 建立连接(stdio:启动子进程;http:预留)
+    /// 建立连接(stdio:启动子进程;http/sse:校验端点,请求时按 Streamable HTTP 发送)
     public func connect() throws {
         guard !isConnected else { return }
         switch config.type {
         case "stdio", "":
             try connectStdio()
         case "http", "sse", "http/sse":
-            throw MCPError.unsupportedTransport("http 传输将在后续版本支持,当前仅 stdio")
+            guard URL(string: config.url)?.scheme != nil else {
+                throw MCPError.invalidResponse("MCP HTTP 端点无效: \(config.url)")
+            }
         default:
             throw MCPError.unsupportedTransport(config.type)
         }
@@ -87,6 +101,7 @@ public actor MCPClient {
         process?.terminate()
         process = nil
         stdoutHandle = nil
+        httpSessionID = nil
         isConnected = false
         initialized = false
     }
@@ -103,7 +118,14 @@ public actor MCPClient {
         ]))
         initialized = true
         // 通知(无响应)
-        try? sendNotification(method: "notifications/initialized", params: nil)
+        if isHTTP {
+            try? await httpRequest(
+                JSONRPCMessage(jsonrpc: "2.0", id: nil, method: "notifications/initialized", params: nil),
+                expecting: nil
+            )
+        } else {
+            try? sendNotification(method: "notifications/initialized", params: nil)
+        }
         return result
     }
 
@@ -160,13 +182,18 @@ public actor MCPClient {
 
     // MARK: - 请求/响应
 
-    /// 发送请求并等待响应(带超时)
+    /// 发送请求并等待响应(stdio 带超时;HTTP 由 URLRequest 超时控制)
     private func request(method: String, params: AnyCodable?) async throws -> AnyCodable? {
         try connect()
         let id = nextID
         nextID += 1
         let message = JSONRPCMessage.request(id: id, method: method, params: params)
-        // 先同步发出请求;失败则不注册等待
+
+        if isHTTP {
+            return try await httpRequest(message, expecting: id)
+        }
+
+        // stdio:先同步发出请求;失败则不注册等待
         try send(message)
 
         return try await withThrowingTaskGroup(of: AnyCodable?.self) { group in
@@ -200,6 +227,73 @@ public actor MCPClient {
 
     private func sendNotification(method: String, params: AnyCodable?) throws {
         try send(JSONRPCMessage(jsonrpc: "2.0", id: nil, method: method, params: params))
+    }
+
+    // MARK: - Streamable HTTP 传输
+
+    private func httpRequest(_ message: JSONRPCMessage, expecting id: Int?) async throws -> AnyCodable? {
+        guard let url = URL(string: config.url) else {
+            throw MCPError.invalidResponse("MCP HTTP 端点无效: \(config.url)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = TimeInterval(timeout.components.seconds)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        for (key, value) in config.headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        if let httpSessionID {
+            request.setValue(httpSessionID, forHTTPHeaderField: "Mcp-Session-Id")
+        }
+        request.httpBody = try message.encode()
+
+        let (data, response) = try await urlSession.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw MCPError.invalidResponse("非 HTTP 响应")
+        }
+        if let session = http.value(forHTTPHeaderField: "Mcp-Session-Id"), !session.isEmpty {
+            httpSessionID = session
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw MCPError.rpcError(
+                http.statusCode,
+                "HTTP \(http.statusCode): \(body.prefix(500))"
+            )
+        }
+        guard !data.isEmpty else { return nil }
+
+        let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? ""
+        if contentType.contains("text/event-stream") {
+            return try parseSSE(data, expecting: id)
+        }
+        let decoded = try JSONDecoder().decode(JSONRPCMessage.self, from: data)
+        if let error = decoded.error {
+            throw MCPError.rpcError(error.code, error.message)
+        }
+        return decoded.result
+    }
+
+    /// 从 SSE 响应中取出目标 id 的 JSON-RPC 消息(忽略通知与心跳)。
+    private func parseSSE(_ data: Data, expecting id: Int?) throws -> AnyCodable? {
+        let text = String(decoding: data, as: UTF8.self)
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("data:") else { continue }
+            let payload = trimmed.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard !payload.isEmpty,
+                  let payloadData = payload.data(using: .utf8),
+                  let message = try? JSONDecoder().decode(JSONRPCMessage.self, from: payloadData)
+            else { continue }
+            if id == nil || message.id == id {
+                if let error = message.error {
+                    throw MCPError.rpcError(error.code, error.message)
+                }
+                return message.result
+            }
+        }
+        return nil
     }
 
     private func send(_ message: JSONRPCMessage) throws {

@@ -12,6 +12,8 @@ struct SettingsView: View {
                 .tabItem { Label("模型", systemImage: "cpu") }
             agentTab($state)
                 .tabItem { Label("Agent", systemImage: "gearshape.2") }
+            MCPSettingsView()
+                .tabItem { Label("MCP", systemImage: "server.rack") }
             memoryTab
                 .tabItem { Label("记忆", systemImage: "brain") }
             aboutTab

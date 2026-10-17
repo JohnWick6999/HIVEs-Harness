@@ -5,10 +5,14 @@ public struct MCPToolAdapter: Tool {
     public let name: String
     public let spec: ToolSpec
     private let client: MCPClient
+    private let remoteName: String
 
-    public init(client: MCPClient, tool: MCPTool) {
+    /// `prefix` 用于避免不同服务器的同名工具冲突(如 `mcp__files__read`).
+    public init(client: MCPClient, tool: MCPTool, prefix: String? = nil) {
+        let exposedName = prefix.map { "\($0)__\(tool.name)" } ?? tool.name
         self.client = client
-        self.name = tool.name
+        self.remoteName = tool.name
+        self.name = exposedName
         let schema: [String: AnyCodable]
         if let dict = tool.inputSchema?.value as? [String: Any] {
             schema = dict.mapValues(AnyCodable.init)
@@ -16,14 +20,14 @@ public struct MCPToolAdapter: Tool {
             schema = [:]
         }
         self.spec = ToolSpec(
-            name: tool.name,
+            name: exposedName,
             description: tool.description ?? "",
             parameters: schema
         )
     }
 
     public func run(arguments: [String: AnyCodable]) async throws -> ToolResult {
-        try await ToolResult(text: client.callTool(name: name, arguments: arguments))
+        try await ToolResult(text: client.callTool(name: remoteName, arguments: arguments))
     }
 }
 
@@ -79,9 +83,18 @@ public actor MCPRegistry {
         return result
     }
 
-    /// 生成可注册进 ToolRegistry 的适配器
+    /// 生成可注册进 ToolRegistry 的适配器(名称加 `mcp__<server>__` 前缀)。
+    /// 单个服务器失败只跳过该服务器,不影响其他 MCP 工具。
     public func makeAdapters() async throws -> [any Tool] {
-        try await allTools().map { MCPToolAdapter(client: client(for: $0.server), tool: $0.tool) }
+        var adapters: [any Tool] = []
+        for config in configs where config.enabled {
+            let client = client(for: config.id)
+            let tools = (try? await client.listTools()) ?? []
+            adapters.append(contentsOf: tools.map {
+                MCPToolAdapter(client: client, tool: $0, prefix: "mcp__\(config.id)")
+            })
+        }
+        return adapters
     }
 
     /// 调用指定服务器的工具

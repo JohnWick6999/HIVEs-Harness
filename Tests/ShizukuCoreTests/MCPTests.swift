@@ -111,10 +111,10 @@ struct MCPRegistryTests {
         for adapter in adapters {
             toolRegistry.register(adapter)
         }
-        #expect(toolRegistry.names() == ["add", "echo"])
+        #expect(toolRegistry.names() == ["mcp__fake__add", "mcp__fake__echo"])
 
         let result = try await toolRegistry.execute(
-            name: "echo",
+            name: "mcp__fake__echo",
             arguments: ["text": AnyCodable("via registry")]
         )
         #expect(result.text == "echo:via registry")

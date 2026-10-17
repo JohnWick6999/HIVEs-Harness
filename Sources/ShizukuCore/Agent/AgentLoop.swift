@@ -86,6 +86,8 @@ public actor AgentLoop {
     private let approvalHandler: ApprovalHandler?
     /// 测试注入:按解析后的模型创建客户端(优先于真实网络客户端)
     private let clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)?
+    /// 额外工具(MCP 适配器等),随内置工具一起注册
+    private let extraTools: [any Tool]
 
     /// 历史保留条数(对齐原版 40)
     private let historyLimit = 40
@@ -102,7 +104,8 @@ public actor AgentLoop {
         clientOverride: (any LLMClient)? = nil,
         toolsOverride: [any Tool]? = nil,
         approvalHandler: ApprovalHandler? = nil,
-        clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)? = nil
+        clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)? = nil,
+        extraTools: [any Tool] = []
     ) {
         self.store = store
         self.config = config
@@ -113,6 +116,7 @@ public actor AgentLoop {
         self.toolsOverride = toolsOverride
         self.approvalHandler = approvalHandler
         self.clientFactory = clientFactory
+        self.extraTools = extraTools
     }
 
     // MARK: - 会话准备
@@ -342,6 +346,7 @@ public actor AgentLoop {
         #if os(macOS)
         tools.append(BuiltinTools.RunLocalAgentTool())
         #endif
+        tools.append(contentsOf: extraTools)
         return tools
     }
 
@@ -624,7 +629,7 @@ public actor AgentLoop {
         guard mode.allows(tool: call.name) else {
             return denied(call, reason: "当前为\(mode.title)模式,不允许执行工具 \(call.name)。")
         }
-        if mode.requiresExecutionApproval, WorkMode.externalExecutionTools.contains(call.name) {
+        if mode.requiresExecutionApproval, WorkMode.requiresExecutionApproval(for: call.name) {
             let decision = await askApproval(
                 .toolExecution,
                 detail: "\(call.name)\n\(call.arguments.prefix(800))"

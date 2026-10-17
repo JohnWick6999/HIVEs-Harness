@@ -20,7 +20,7 @@
 | 🧮 上下文压缩 | CJK token 估算,85% 自动摘要压缩,保留最近两轮,原始消息不删除,顶栏用量环 | ✅ |
 | 🛡️ 工作模式与审批 | 对话/安全/完全控制三档;读任意路径、写受模式限制;外部写入与执行需审批;Touch ID 解锁 | ✅ |
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
-| 🔌 MCP 客户端 | JSON-RPC 2.0 over stdio,服务器注册表,工具自动注册进 Agent | ✅ |
+| 🔌 MCP 客户端 | JSON-RPC 2.0 over stdio / Streamable HTTP,servers.json,工具以 `mcp__<server>__` 前缀注册,仅完全控制模式可用 | ✅ |
 | 🧩 插件系统 | plugin.json 清单扫描 + 安全策略(网络/执行时限/域名白名单) | ✅ |
 | 🖥️ 菜单栏常驻 | 顶栏图标 + 快速提问,随时唤起 | ✅ |
 | 🔑 密钥安全 | API Key 存钥匙串(Keychain),不进配置文件 | ✅ |
@@ -51,7 +51,7 @@
 | `Tools/` | Tool 协议(async)、注册表、SafePath 工作区沙箱、6 个内置工具 + todowrite/todoread |
 | `Agent/` | AgentLoop actor:工具循环、无 Key 回退、checkpoint、自动记忆;TaskPlan 计划;ContextManager 压缩 |
 | `Persona/` | Persona 模型 + 5 内置人格(Bundle 资源,id=文件名) |
-| `MCP/` | JSON-RPC 2.0 编解码、stdio 子进程传输、服务器注册表、工具适配器 |
+| `MCP/` | JSON-RPC 2.0 编解码、stdio 子进程 / Streamable HTTP 传输、配置加载、工具适配器 |
 | `Plugin/` | plugin.json 扫描、安全策略(容错解码) |
 
 ## 🛠️ 技术栈
@@ -59,7 +59,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,87 项用例覆盖全部核心模块
+- 测试:swift-testing,91 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 
@@ -104,7 +104,35 @@ swift run ShizukuClaw
 | 数据库(对话/记忆/检查点) | `~/Library/Application Support/ShizukuClaw/agent.db` |
 | 工作区(文件工具沙箱) | `~/Documents/ShizukuClaw/` |
 | 配置文件 | `~/Library/Application Support/ShizukuClaw/config.json` |
-| API Key | 钥匙串(`com.shizukuclaw.app`) |
+| MCP 配置 | `~/Documents/ShizukuClaw/mcp/servers.json` |
+| API Key | 钥匙串(`com.shizukuclaw.app`,按 `provider.<id>.api_key` 存储) |
+
+### MCP 配置示例
+
+```json
+{
+  "servers": [
+    {
+      "id": "files",
+      "name": "Files",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/me/Documents"],
+      "enabled": true
+    },
+    {
+      "id": "remote",
+      "name": "Remote",
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": {"Authorization": "Bearer …"},
+      "enabled": true
+    }
+  ]
+}
+```
+
+MCP 工具名会带 `mcp__<server>__` 前缀;只有**完全控制**模式会把它们暴露给模型,每次调用前都要在对话里审批。设置 → MCP 可直接编辑并重载。
 
 ## 📂 目录结构
 
@@ -132,7 +160,8 @@ swift run ShizukuClaw
 - [x] Phase 0 环境与骨架
 - [x] Phase 1 ShizukuCore 核心引擎(8 模块,57 测试)
 - [x] Phase 2 macOS App(聊天/流式/工具卡片/菜单栏/记忆管理)
-- [ ] Phase 2 收尾:工作模式+生物认证、MCP/插件管理 UI、全局快捷键
+- [x] Phase 2 收尾:工作模式+生物认证、MCP 管理 UI
+- [ ] 全局快捷键、插件管理 UI
 - [ ] Phase 3 iOS / iPadOS 版(复用核心 + 分享扩展)
 - [ ] Phase 4 watchOS(可选)
 - [ ] Phase 5 visionOS + TestFlight 分发
