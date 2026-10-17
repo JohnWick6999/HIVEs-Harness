@@ -48,6 +48,30 @@ struct MarkdownTests {
         #expect(table.rows[1] == ["grep", "搜索内容"])
     }
 
+    @Test("表格:代码内竖线与转义竖线不分列")
+    func tablePipes() throws {
+        let table = try #require(MarkdownTableParser.parse("""
+        | 表达式 | 说明 |
+        | --- | --- |
+        | `a|b` | 代码里的竖线 |
+        | a \\| b | 转义竖线 |
+        """))
+        #expect(table.rows.count == 2)
+        #expect(table.rows[0].count == 2)
+        #expect(table.rows[0][0] == "`a|b`")
+        #expect(table.rows[1][0] == "a | b")
+    }
+
+    @Test("表格:短行补齐列数")
+    func tablePadding() throws {
+        let table = try #require(MarkdownTableParser.parse("""
+        | A | B | C |
+        | --- | --- | --- |
+        | 1 | 2 |
+        """))
+        #expect(table.rows[0] == ["1", "2", ""])
+    }
+
     @Test("无空格标题也识别")
     func headingWithoutSpace() {
         #expect(MarkdownParser.parse("###标题").contains(.heading(level: 3, text: "标题")))

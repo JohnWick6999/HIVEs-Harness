@@ -129,20 +129,22 @@ struct HiveMarkdownView: View {
 private struct MarkdownTableView: View {
     let table: MarkdownTable
 
+    private var columnWidths: [CGFloat] {
+        table.headers.indices.map { index in
+            var longest = displayLength(table.headers[index])
+            for row in table.rows where index < row.count {
+                longest = max(longest, displayLength(row[index]))
+            }
+            return min(300, max(84, CGFloat(longest) * 7 + 20))
+        }
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
-                GridRow {
-                    ForEach(Array(table.headers.enumerated()), id: \.offset) { _, header in
-                        cell(header, header: true)
-                    }
-                }
-                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
-                    GridRow {
-                        ForEach(Array(row.enumerated()), id: \.offset) { _, value in
-                            cell(value, header: false)
-                        }
-                    }
+            VStack(spacing: 0) {
+                row(table.headers, header: true)
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, values in
+                    row(values, header: false)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -154,13 +156,21 @@ private struct MarkdownTableView: View {
         .frame(maxWidth: 760, alignment: .leading)
     }
 
-    private func cell(_ value: String, header: Bool) -> some View {
+    private func row(_ values: [String], header: Bool) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(table.headers.indices), id: \.self) { index in
+                cell(index < values.count ? values[index] : "", header: header, index: index)
+            }
+        }
+    }
+
+    private func cell(_ value: String, header: Bool, index: Int) -> some View {
         Text(inline(value))
             .font(.system(header ? .caption : .caption2, design: .rounded))
             .fontWeight(header ? .semibold : .regular)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
-            .frame(minWidth: 70, alignment: .leading)
+            .frame(width: columnWidths[index], alignment: .leading)
             .background(header ? Color.primary.opacity(0.055) : Color.clear)
             .overlay(alignment: .trailing) {
                 Rectangle().fill(HiveTheme.hairline).frame(width: 1)
@@ -168,6 +178,22 @@ private struct MarkdownTableView: View {
             .overlay(alignment: .bottom) {
                 Rectangle().fill(HiveTheme.hairline).frame(height: 1)
             }
+            .textSelection(.enabled)
+    }
+
+    private func displayLength(_ value: String) -> Int {
+        value.unicodeScalars.reduce(0) { total, scalar in
+            let value = scalar.value
+            let wide = (0x1100...0x115F).contains(value)
+                || (0x2E80...0xA4CF).contains(value)
+                || (0xAC00...0xD7A3).contains(value)
+                || (0xF900...0xFAFF).contains(value)
+                || (0xFE10...0xFE19).contains(value)
+                || (0xFE30...0xFE6F).contains(value)
+                || (0xFF00...0xFF60).contains(value)
+                || (0xFFE0...0xFFE6).contains(value)
+            return total + (wide ? 2 : 1)
+        }
     }
 
     private func inline(_ value: String) -> AttributedString {
