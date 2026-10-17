@@ -93,8 +93,22 @@ struct HiveQuestionCard: View {
     let onAnswer: (ClarificationAnswer) -> Void
     let onSkip: () -> Void
 
-    @State private var selected: Set<String> = []
+    @State private var selected: Set<String>
     @State private var freeform = ""
+
+    init(
+        question: ClarificationRequest,
+        onAnswer: @escaping (ClarificationAnswer) -> Void,
+        onSkip: @escaping () -> Void
+    ) {
+        self.question = question
+        self.onAnswer = onAnswer
+        self.onSkip = onSkip
+        let recommended = question.options
+            .filter(\.recommended)
+            .map(\.label)
+        _selected = State(initialValue: Set(question.allowsMultiple ? recommended : Array(recommended.prefix(1))))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
