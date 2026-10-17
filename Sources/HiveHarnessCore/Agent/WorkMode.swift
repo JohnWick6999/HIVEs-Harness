@@ -62,7 +62,7 @@ public enum WorkMode: String, Codable, Sendable, Equatable, CaseIterable {
     ]
 
     public static let externalExecutionTools: Set<String> = [
-        "run_local_agent", "call_mcp", "shell",
+        "run_local_agent", "call_mcp", "shell", "http_get",
     ]
 }
 

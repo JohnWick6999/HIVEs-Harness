@@ -291,6 +291,15 @@ public actor AgentLoop {
             把名称、用途和具体可复用步骤写清楚;不要直接写文件,也不要执行插件代码。
             """
             : ""
+        let webSection = mode.allows(tool: "http_get")
+            ? """
+
+            [联网]
+            需要实时数据(天气、公共 API、网页/文档)时,先调用 http_get,不要先尝试 run_local_agent 或声称没有联网能力。
+            天气示例:https://wttr.in/Yingkou?format=%l:+%c+%t+%w+%h
+            只访问公开 http/https;本机/私网地址会被拒绝;网络请求会先请求用户审批。
+            """
+            : ""
         return """
         \(personaPrompt)
 
@@ -302,6 +311,7 @@ public actor AgentLoop {
 
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
         \(imageHint)
+        \(webSection)
 
         文件工具(list_dir/read_file)可以读取任意本地路径,包括工作区外的绝对路径;不能因为路径在工作区外就声称无法读取。
         写入范围由工作模式决定:安全模式只能写工作区,完全控制模式写工作区外会先请求用户审批。
@@ -425,6 +435,7 @@ public actor AgentLoop {
                 threadID: session.threadID,
                 persona: session.persona
             ),
+            HTTPGetTool(),
         ]
         if let clarificationHandler, clarificationMode.maxQuestions > 0 {
             tools.append(
