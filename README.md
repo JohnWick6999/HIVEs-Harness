@@ -56,13 +56,13 @@
 - **Swift 6.4** / SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,57 项用例覆盖全部核心模块
+- 测试:swift-testing,59 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 
 ```bash
-# 单元测试(核心引擎)
-swift test
+# 单元测试(核心引擎)—— 用脚本自动选择 Xcode 工具链
+./scripts/test.sh
 
 # 开发运行(直接弹窗)
 swift run ShizukuClaw
@@ -70,6 +70,20 @@ swift run ShizukuClaw
 # 打包为正式 .app 并启动(推荐日常使用)
 ./scripts/make_app.sh && open build/ShizukuClaw.app
 ```
+
+> 为什么测试要走脚本:Command Line Tools 的 Swift Testing 宏插件位于
+> `usr/lib/swift/host/plugins/testing/`,swift-driver 默认不加载,直接 `swift test`
+> 会报 `plugin for module 'TestingMacros' not found`。脚本会优先使用已安装的
+> Xcode / Xcode-beta 工具链(`DEVELOPER_DIR`)。仅编译 App 不受此影响。
+
+### 仓库关系
+
+| remote | 地址 | 用途 |
+|---|---|---|
+| `upstream` | `github.com/windbreake/ShizukuAgent` | Python 原版,行为参照 |
+| `legacy` | `github.com/windbreake/ShizukuClaw` | 旧仓库,仅存档 |
+
+当前仓库是独立 macOS Agent 的 Swift 实现;新建托管仓库后会把 `origin` 指向新地址。
 
 ### 首次使用
 
