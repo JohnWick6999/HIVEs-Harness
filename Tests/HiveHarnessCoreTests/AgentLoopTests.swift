@@ -218,10 +218,11 @@ struct AgentLoopTests {
         )
         _ = try await loop.invoke(message: "用户喜欢抹茶,是吗")
 
-        let system = mock.capturedMessages().first?.first?.content.plainText ?? ""
-        #expect(system.contains("你是测试酱,一个认真的助手"))
-        #expect(system.contains("口头禅是明白"))
-        #expect(system.contains("用户喜欢抹茶"))
+        let request = mock.capturedMessages().first ?? []
+        let prompt = request.map(\.content.plainText).joined(separator: "\n")
+        #expect(prompt.contains("你是测试酱,一个认真的助手"))
+        #expect(prompt.contains("口头禅是明白"))
+        #expect(prompt.contains("用户喜欢抹茶"))
     }
 
     @Test("流式:文本增量与 finished 事件")
@@ -305,9 +306,9 @@ struct AgentLoopTests {
             skillCatalog: "- code-review: 代码审查 — 审查代码"
         )
         _ = try await fixture.loop.invoke(message: "你好")
-        let system = fixture.mock.capturedMessages().first?.first?.content.plainText ?? ""
-        #expect(system.contains("[技能]"))
-        #expect(system.contains("code-review"))
+        let request = fixture.mock.capturedMessages().first ?? []
+        #expect(request.contains { $0.content.plainText.contains("[技能]") })
+        #expect(request.contains { $0.content.plainText.contains("code-review") })
     }
 
     @Test("内置人格资源加载")

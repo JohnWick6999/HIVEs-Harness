@@ -167,7 +167,10 @@ public actor AgentLoop {
         let runID: String
         /// 本轮开始时的任务计划
         let plan: TaskPlan
+        /// 稳定前缀(人格/模式/工具规则),放最前面提高前缀缓存命中。
         let systemPrompt: String
+        /// 记忆/计划/技能索引等动态内容,放消息末尾,避免污染稳定前缀。
+        let dynamicContext: String
     }
 
     /// 运行模式:真实客户端 + 工具集,或无 Key 本地回退。
@@ -261,18 +264,14 @@ public actor AgentLoop {
             memories: memories,
             runID: runID,
             plan: plan,
-            systemPrompt: buildSystemPrompt(persona: current, memories: memories, plan: plan)
+            systemPrompt: buildSystemPrompt(persona: current),
+            dynamicContext: buildDynamicContext(memories: memories, plan: plan)
         )
     }
 
-    /// 人格 prompt + 长期记忆 + 工作模式 + 工具使用约束 + 任务计划。
-    private func buildSystemPrompt(persona: String, memories: [MemoryItem], plan: TaskPlan) -> String {
-        let memoryText = memories.isEmpty
-            ? "暂无长期记忆。"
-            : memories.map { "- \($0.content)" }.joined(separator: "\n")
+    /// 稳定系统前缀:人格、模式、工具规则。动态记忆/计划不放在这里。
+    private func buildSystemPrompt(persona: String) -> String {
         let personaPrompt = personas.load(id: persona)?.buildSystemPrompt() ?? config.agent.systemPrompt
-        let planText = plan.promptText
-        let planSection = planText.isEmpty ? "" : "\n\n\(planText)"
         let clarificationSection: String
         if clarificationHandler == nil || clarificationMode.maxQuestions == 0 {
             clarificationSection = ""
@@ -330,9 +329,6 @@ public actor AgentLoop {
         [工作模式]
         \(mode.title):\(mode.detail)
 
-        [长期记忆]
-        \(memoryText)
-
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
         按问题选择必要工具;独立查询可在同一次响应并行调用,结果返回后继续,不要因多工具结束。
         \(imageHint)
@@ -353,9 +349,25 @@ public actor AgentLoop {
         \(pluginSection)
 
         [技能]
-        需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先查看下方索引,再用 run_skill 加载对应指令后执行。
-        \(skillCatalog.isEmpty ? "当前没有已启用技能。" : skillCatalog)\(planSection)
+        需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先用 list_skills 查看索引,再用 run_skill 加载对应指令后执行。
         """
+    }
+
+    /// 动态上下文放在消息末尾;前缀(稳定系统 + 历史)可被自动缓存。
+    private func buildDynamicContext(memories: [MemoryItem], plan: TaskPlan) -> String {
+        var sections: [String] = []
+        let memoryText = memories.isEmpty
+            ? "暂无长期记忆。"
+            : memories.map { "- \($0.content)" }.joined(separator: "\n")
+        sections.append("[长期记忆]\n\(memoryText)")
+        if !skillCatalog.isEmpty {
+            sections.append("[技能索引]\n\(skillCatalog)")
+        }
+        let planText = plan.promptText
+        if !planText.isEmpty {
+            sections.append(planText)
+        }
+        return sections.joined(separator: "\n\n")
     }
 
     // MARK: - 客户端与工具装配
@@ -444,9 +456,13 @@ public actor AgentLoop {
         let allowedSpecs = tools
             .filter { config.agent.workMode.allows(tool: $0.name) }
             .map(\.spec)
+        let selectorQuery = session.history
+            .filter { $0.role == .user }
+            .map(\.content.plainText)
+            .joined(separator: "\n")
         let specs = ToolSelector.select(
             specs: allowedSpecs,
-            query: session.userText,
+            query: selectorQuery,
             mode: config.agent.workMode
         )
         return (registry, specs)
@@ -733,7 +749,16 @@ public actor AgentLoop {
         }
         let streaming = yield != nil
         var messages: [ChatMessage] = [.text(.system, session.systemPrompt)]
-        messages.append(contentsOf: session.history)
+        if !session.dynamicContext.isEmpty,
+           let lastUser = session.history.lastIndex(where: { $0.role == .user }) {
+            // 动态记忆/计划插在当前用户消息之前,保持最后一条为 user;
+            // 稳定系统 + 更早历史仍是可复用前缀。
+            messages.append(contentsOf: session.history[..<lastUser])
+            messages.append(.text(.system, session.dynamicContext))
+            messages.append(contentsOf: session.history[lastUser...])
+        } else {
+            messages.append(contentsOf: session.history)
+        }
         var traces: [ToolTrace] = []
         var lastPlan = session.plan
         var lastContext: SessionContextState?
