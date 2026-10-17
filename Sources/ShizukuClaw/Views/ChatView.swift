@@ -6,6 +6,7 @@ struct ChatView: View {
     @State private var input = ""
     @State private var showSettings = false
     @State private var showMarketplace = false
+    @State private var showWorkbench = false
     @State private var planExpanded = true
     @State private var showContext = false
 
@@ -32,6 +33,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showMarketplace) {
             MarketplaceView()
+                .environment(state)
+        }
+        .sheet(isPresented: $showWorkbench) {
+            WorkbenchView()
                 .environment(state)
         }
         .onChange(of: state.pendingDraft) { _, draft in
@@ -93,6 +98,13 @@ struct ChatView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Button {
+                showWorkbench = true
+            } label: {
+                Image(systemName: "wrench.and.screwdriver")
+            }
+            .help("工作台")
 
             Button {
                 showMarketplace = true

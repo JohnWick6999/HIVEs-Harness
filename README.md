@@ -21,6 +21,7 @@
 | 🧮 上下文压缩 | CJK token 估算,85% 自动摘要压缩,保留最近两轮,原始消息不删除,顶栏用量环 | ✅ |
 | 🛡️ 工作模式与审批 | 对话/安全/完全控制三档;读任意路径、写受模式限制;外部写入与执行需审批;Touch ID 解锁 | ✅ |
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
+| 🧰 工作台 | 工作区文件浏览/预览、Git status + diff、Shell(完全控制 + 确认) | ✅ |
 | 🏪 插件市场 | 内置目录 + GitHub + 魔搭;瀑布流卡片、链接导入、安装预检;首版只安装 SKILL.md | ✅ |
 | 🌐 本地网关 | 127.0.0.1 上的 OpenAI 兼容 `/v1/models` + `/v1/chat/completions`,可选 Bearer Token | ✅ |
 | 🧬 技能自进化 | 成功轨迹 → 反思 → 技能提案;人工批准后进入技能库,自动提炼可开关 | ✅ |
@@ -56,6 +57,7 @@
 | `Tools/` | Tool 协议(async)、注册表、SafePath 工作区沙箱、6 个内置工具 + todowrite/todoread |
 | `Agent/` | AgentLoop actor:工具循环、无 Key 回退、checkpoint、自动记忆;TaskPlan 计划;ContextManager 压缩 |
 | `Persona/` | Persona 模型 + 5 内置人格(Bundle 资源,id=文件名) |
+| `Workbench/` | 工作区文件浏览、Git 变更、Shell(Process + 超时 + 输出上限) |
 | `Marketplace/` | GitHub / ModelScope 目录适配、链接解析、统一卡片、SKILL.md 安装器 |
 | `Gateway/` | HTTP/1.1 解析、OpenAI 兼容路由、NWListener 本地网关 |
 | `Skills/` | 内置技能 Bundle、SKILL.md 解析、安装/启停、list_skills/run_skill、SkillEvolver 自进化 |
@@ -67,7 +69,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,118 项用例覆盖全部核心模块
+- 测试:swift-testing,121 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

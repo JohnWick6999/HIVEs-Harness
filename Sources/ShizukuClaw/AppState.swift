@@ -44,6 +44,7 @@ final class AppState {
 
     let store: SQLiteStore
     let workspace: URL
+    let workspaceService: WorkspaceService
     let mcpDirectory: URL
     let skillsDirectory: URL
     private let configStore: ConfigStore
@@ -75,6 +76,7 @@ final class AppState {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let ws = documents.appendingPathComponent("ShizukuClaw", isDirectory: true)
         workspace = ws
+        workspaceService = WorkspaceService(root: ws)
         try? FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
 
         // MCP 配置目录:~/Documents/ShizukuClaw/mcp/servers.json
