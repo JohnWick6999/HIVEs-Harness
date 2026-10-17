@@ -7,6 +7,9 @@ struct RunHistoryView: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
     @State private var selectedID: String?
+    @State private var replay: RunReplay?
+    @State private var isPlaying = false
+    @State private var playTask: Task<Void, Never>?
 
     private var selected: RunRecord? {
         state.runs.first { $0.id == selectedID } ?? state.runs.first
@@ -25,7 +28,10 @@ struct RunHistoryView: View {
                 Spacer()
                 Button("刷新") {
                     state.loadRuns()
-                    if selectedID == nil { selectedID = state.runs.first?.id }
+                    if let first = state.runs.first {
+                        selectedID = first.id
+                        replay = RunReplay(run: first, cursor: first.events.count)
+                    }
                 }
                 Button("关闭") { dismiss() }
             }
@@ -85,12 +91,88 @@ struct RunHistoryView: View {
         .frame(width: 1_000, height: 650)
         .onAppear {
             state.loadRuns()
-            if selectedID == nil { selectedID = state.runs.first?.id }
+            if let first = state.runs.first {
+                selectedID = first.id
+                replay = RunReplay(run: first, cursor: first.events.count)
+            }
+        }
+        .onChange(of: selectedID) { _, _ in
+            stop()
+            if let run = selected {
+                replay = RunReplay(run: run, cursor: run.events.count)
+            } else {
+                replay = nil
+            }
+        }
+        .onDisappear {
+            stop()
         }
     }
 
+    private func replay(for run: RunRecord) -> RunReplay {
+        if let replay, replay.runID == run.id { return replay }
+        return RunReplay(run: run, cursor: run.events.count)
+    }
+
+    private func resetReplay() {
+        guard var current = replay else { return }
+        current.reset()
+        replay = current
+        stop()
+    }
+
+    private func stepForward() {
+        guard var current = replay else { return }
+        _ = current.step()
+        replay = current
+        if current.isFinished { stop() }
+    }
+
+    private func stepBack() {
+        guard var current = replay else { return }
+        current.jump(to: current.cursor - 1)
+        replay = current
+        stop()
+    }
+
+    private func jumpToEnd() {
+        guard var current = replay else { return }
+        current.toEnd()
+        replay = current
+        stop()
+    }
+
+    private func togglePlay() {
+        if isPlaying {
+            stop()
+            return
+        }
+        guard var current = replay else { return }
+        if current.isFinished {
+            current.reset()
+            replay = current
+        }
+        isPlaying = true
+        playTask?.cancel()
+        playTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(650))
+                guard !Task.isCancelled, isPlaying else { break }
+                stepForward()
+            }
+            if isPlaying { isPlaying = false }
+        }
+    }
+
+    private func stop() {
+        playTask?.cancel()
+        playTask = nil
+        isPlaying = false
+    }
+
     private func timeline(_ run: RunRecord) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let active = replay(for: run)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(run.id)
@@ -104,10 +186,36 @@ struct RunHistoryView: View {
                 Button("复制 JSON") { copyJSON(run) }
             }
             .padding(10)
+
+            HStack(spacing: 8) {
+                Button { resetReplay() } label: { Image(systemName: "backward.end") }
+                    .help("回到开头")
+                Button { stepBack() } label: { Image(systemName: "backward.frame") }
+                    .help("上一步")
+                Button { togglePlay() } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                }
+                .help(isPlaying ? "暂停" : "播放")
+                Button { stepForward() } label: { Image(systemName: "forward.frame") }
+                    .help("下一步")
+                Button { jumpToEnd() } label: { Image(systemName: "forward.end") }
+                    .help("跳到结尾")
+                Text("\(active.cursor)/\(active.total)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text("事件回放(不执行副作用)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 8)
+
             Divider()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(run.events) { event in
+                    ForEach(active.visibleEvents) { event in
                         eventRow(event)
                     }
                 }

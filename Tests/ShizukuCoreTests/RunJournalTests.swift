@@ -63,6 +63,34 @@ struct RunJournalTests {
         #expect(runs.first?.events.contains { $0.kind == .error } == true)
     }
 
+    @Test("事件回放游标:单步/跳转/重置")
+    func replayCursor() {
+        let run = RunRecord(
+            id: "run-replay",
+            threadID: "t",
+            persona: "p",
+            status: .completed,
+            events: [
+                RunEvent(seq: 1, kind: .started, title: "开始"),
+                RunEvent(seq: 2, kind: .tool, title: "list_dir"),
+                RunEvent(seq: 3, kind: .finished, title: "完成"),
+            ]
+        )
+        var replay = RunReplay(run: run)
+        #expect(replay.cursor == 0)
+        #expect(replay.visibleEvents.isEmpty)
+        #expect(replay.step()?.seq == 1)
+        #expect(replay.visibleEvents.count == 1)
+        replay.jump(to: 2)
+        #expect(replay.cursor == 2)
+        #expect(replay.current?.seq == 2)
+        replay.toEnd()
+        #expect(replay.isFinished)
+        #expect(replay.visibleEvents.count == 3)
+        replay.reset()
+        #expect(replay.cursor == 0)
+    }
+
     @Test("保存/读取/删除运行记录")
     func storeRoundtrip() throws {
         let store = try SQLiteStore(
