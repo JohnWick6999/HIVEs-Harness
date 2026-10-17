@@ -34,7 +34,7 @@ struct SidebarView: View {
         .padding(.vertical, 12)
         .frame(width: width)
         .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial)
+        .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.025))
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(HiveTheme.hairline)
@@ -50,9 +50,9 @@ struct SidebarView: View {
             if expanded {
                 HiveMark(size: 28)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("HIVE")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
-                        .tracking(0.6)
+                    Text("HIVE'S")
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
+                        .tracking(0.4)
                     Text("HARNESS")
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .tracking(2.2)

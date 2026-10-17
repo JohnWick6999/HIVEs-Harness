@@ -6,13 +6,14 @@ struct HiveHarnessApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup("HIVE's Harness", id: "main") {
+        WindowGroup("", id: "main") {
             ChatView()
                 .environment(appState)
                 .frame(minWidth: 720, minHeight: 600)
         }
         .defaultSize(width: 1040, height: 720)
         .windowResizability(.contentMinSize)
+        .windowStyle(.hiddenTitleBar)
 
         // 菜单栏常驻:随时唤起、快速提问
         MenuBarExtra("HIVE's Harness", systemImage: "hexagon") {
