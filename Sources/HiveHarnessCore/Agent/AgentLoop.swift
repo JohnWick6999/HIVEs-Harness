@@ -222,6 +222,7 @@ public actor AgentLoop {
     /// 恢复历史、追加用户消息、检索记忆并构建系统提示词。
     private func prepareSession(
         message: String,
+        attachments: [FileAttachment] = [],
         persona: String?,
         threadID: String?
     ) -> Session {
@@ -230,7 +231,13 @@ public actor AgentLoop {
 
         var history = (try? store.loadMessages(threadID: thread, persona: current)) ?? []
         let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        history.append(.text(.user, text.isEmpty ? "（空消息）" : text))
+        history.append(
+            ChatMessage(
+                role: .user,
+                content: .text(text.isEmpty ? "（空消息）" : text),
+                fileAttachments: attachments
+            )
+        )
 
         let memories = (try? store.searchMemories(
             query: text.isEmpty ? current : text,
@@ -405,7 +412,10 @@ public actor AgentLoop {
             baseURL: resolved.provider.baseURL,
             apiKey: resolved.apiKey,
             model: resolved.model.model,
-            temperature: resolved.model.temperature
+            temperature: resolved.model.temperature,
+            reasoningEffort: ModelContextResolver.supportsReasoningEffort(for: resolved.model.model)
+                ? config.agent.reasoningEffort.apiValue
+                : nil
         )
     }
 
@@ -480,10 +490,16 @@ public actor AgentLoop {
 
     public func invoke(
         message: String,
+        attachments: [FileAttachment] = [],
         persona: String? = nil,
         threadID: String? = nil
     ) async throws -> AgentResult {
-        let session = prepareSession(message: message, persona: persona, threadID: threadID)
+        let session = prepareSession(
+            message: message,
+            attachments: attachments,
+            persona: persona,
+            threadID: threadID
+        )
         defer { endRun(session) }
         let recorder = RunRecorder(threadID: session.threadID, persona: session.persona)
         recorder.add(.started, title: "开始", detail: session.userText)
@@ -561,13 +577,19 @@ public actor AgentLoop {
     /// 流式调用:逐块产出文本增量,工具调用与结束状态以事件形式发出。
     public func stream(
         message: String,
+        attachments: [FileAttachment] = [],
         persona: String? = nil,
         threadID: String? = nil
     ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await self.runStreaming(message: message, persona: persona, threadID: threadID) { event in
+                    try await self.runStreaming(
+                        message: message,
+                        attachments: attachments,
+                        persona: persona,
+                        threadID: threadID
+                    ) { event in
                         continuation.yield(event)
                     }
                     continuation.finish()
@@ -583,11 +605,17 @@ public actor AgentLoop {
 
     private func runStreaming(
         message: String,
+        attachments: [FileAttachment] = [],
         persona: String?,
         threadID: String?,
         yield: @escaping @Sendable (AgentStreamEvent) -> Void
     ) async throws {
-        let session = prepareSession(message: message, persona: persona, threadID: threadID)
+        let session = prepareSession(
+            message: message,
+            attachments: attachments,
+            persona: persona,
+            threadID: threadID
+        )
         defer { endRun(session) }
         let recorder = RunRecorder(threadID: session.threadID, persona: session.persona)
         recorder.add(.started, title: "开始", detail: session.userText)

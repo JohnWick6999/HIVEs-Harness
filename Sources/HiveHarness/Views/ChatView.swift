@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 import HiveHarnessCore
 
 struct ChatView: View {
     @Environment(AppState.self) private var state
     @State private var input = ""
+    @State private var pendingAttachments: [FileAttachment] = []
     @State private var showSettings = false
     @State private var showMarketplace = false
     @State private var showWorkbench = false
@@ -120,13 +122,6 @@ struct ChatView: View {
             .fixedSize()
 
             sessionMenu
-
-            modeMenu
-
-            Text(state.activeModelName)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
 
             Spacer()
 
@@ -567,38 +562,63 @@ struct ChatView: View {
 
     private var inputBar: some View {
         VStack(spacing: 6) {
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("交给 HIVE 一个任务…", text: $input, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(.body, design: .rounded))
-                    .lineLimit(1...6)
-                    .focused($composerFocused)
-                    .onSubmit {
-                        send()
+            VStack(spacing: 8) {
+                if !pendingAttachments.isEmpty {
+                    attachmentStrip
+                }
+
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("交给 HIVE 一个任务…", text: $input, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(.body, design: .rounded))
+                        .lineLimit(1...6)
+                        .focused($composerFocused)
+                        .onSubmit {
+                            send()
+                        }
+                        .disabled(state.isBusy)
+
+                    if state.isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.trailing, 2)
                     }
-                    .disabled(state.isBusy)
 
-                if state.isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                        .padding(.trailing, 2)
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(
+                                sendDisabled
+                                    ? AnyShapeStyle(Color.secondary.opacity(0.25))
+                                    : AnyShapeStyle(HiveTheme.gradient),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(sendDisabled)
+                    .help("发送 (Enter)")
                 }
 
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isBusy
-                                ? AnyShapeStyle(Color.secondary.opacity(0.25))
-                                : AnyShapeStyle(HiveTheme.gradient),
-                            in: Circle()
-                        )
+                HStack(spacing: 8) {
+                    Button(action: pickFiles) {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(HiveTheme.amberDeep)
+                            .frame(width: 24, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("上传文件(最多 12 个,单个 30MB)")
+
+                    modeMenu
+
+                    Spacer(minLength: 0)
+
+                    modelMenu
+                    ReasoningControl(effort: reasoningBinding)
                 }
-                .buttonStyle(.plain)
-                .disabled(state.isBusy || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help("发送 (Enter)")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
@@ -629,6 +649,99 @@ struct ChatView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.02))
+    }
+
+    private var sendDisabled: Bool {
+        state.isBusy || (input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && pendingAttachments.isEmpty)
+    }
+
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(pendingAttachments) { file in
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                            .font(.caption2)
+                            .foregroundStyle(HiveTheme.amberDeep)
+                        Text(file.name)
+                            .font(.caption2)
+                            .lineLimit(1)
+                        Button {
+                            pendingAttachments.removeAll { $0.id == file.id }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .hiveGlass(corner: 7, tint: HiveTheme.amber.opacity(0.04))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var reasoningBinding: Binding<ReasoningEffort> {
+        Binding(
+            get: { state.config.agent.reasoningEffort },
+            set: { newValue in
+                state.config.agent.reasoningEffort = newValue
+                state.saveConfig()
+            }
+        )
+    }
+
+    private var modelMenu: some View {
+        Menu {
+            ForEach(state.selectableModels) { model in
+                Button {
+                    state.selectModel(model.id)
+                } label: {
+                    if model.id == state.activeModelID {
+                        Label(model.name, systemImage: "checkmark")
+                    } else {
+                        Text(model.name)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 9))
+                Text(state.activeModelName)
+                    .font(.system(size: 9, weight: .medium))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .hiveGlass(corner: 6, tint: HiveTheme.amber.opacity(0.02), interactive: true)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("切换当前 API 可用模型")
+    }
+
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            guard response == .OK else { return }
+            Task { @MainActor in
+                let imported = state.importAttachments(from: panel.urls)
+                pendingAttachments.append(contentsOf: imported)
+            }
+        }
     }
 
     // MARK: - AI 用量
@@ -776,9 +889,12 @@ struct ChatView: View {
 
     private func send() {
         let text = input
+        let attachments = pendingAttachments
+        guard !sendDisabled else { return }
         input = ""
+        pendingAttachments = []
         Task {
-            await state.sendStreaming(text)
+            await state.sendStreaming(text, attachments: attachments)
         }
     }
 }
@@ -803,12 +919,22 @@ struct MessageRow: View {
         HStack(alignment: .top, spacing: 8) {
             Spacer(minLength: 64)
             VStack(alignment: .trailing, spacing: 4) {
-                bubble(text: message.content.plainText, isUser: true)
+                bubble(text: visibleText, isUser: true)
+                if !message.fileAttachments.isEmpty {
+                    attachments
+                }
                 Text("你")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private var visibleText: String {
+        let text = message.content.plainText
+        guard let range = text.range(of: "\n\n[用户上传附件]") else { return text }
+        let body = String(text[..<range.lowerBound])
+        return body.isEmpty ? "已上传 \(message.fileAttachments.count) 个附件" : body
     }
 
     private var assistantRow: some View {
