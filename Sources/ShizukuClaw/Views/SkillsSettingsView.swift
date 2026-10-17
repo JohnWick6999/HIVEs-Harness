@@ -32,8 +32,13 @@ struct SkillsSettingsView: View {
                 Button("打开目录") {
                     NSWorkspace.shared.open(state.skillsDirectory)
                 }
-                Button("重新载入") {
-                    state.reloadSkills()
+                Menu("维护") {
+                    Button("归档 30 天未用技能") {
+                        state.archiveStaleSkills()
+                    }
+                    Button("重新载入") {
+                        state.reloadSkills()
+                    }
                 }
             }
             .padding(12)

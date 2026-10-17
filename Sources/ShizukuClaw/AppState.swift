@@ -96,7 +96,7 @@ final class AppState {
 
         let githubToken = (try? keychain.string(forKey: "github.token")) ?? ""
         marketplace = MarketplaceService(githubToken: githubToken)
-        marketplaceInstaller = MarketplaceInstaller(githubToken: githubToken, skillStore: skillStore)
+        marketplaceInstaller = MarketplaceInstaller(githubToken: githubToken, skillStore: skillStore, mcpDirectory: mcpDir)
 
         // 迁移旧工作区文件(Application Support/workspace -> Documents/ShizukuClaw)
         let legacyWorkspace = base.appendingPathComponent("workspace", isDirectory: true)
@@ -667,6 +667,12 @@ final class AppState {
         skills = skillStore.all()
     }
 
+    /// 归档 30 天未用的用户技能(移到 skills/_archive)。
+    func archiveStaleSkills() {
+        _ = skillStore.archiveStale(days: 30)
+        skills = skillStore.all()
+    }
+
     @discardableResult
     func installSkill(from url: URL) throws -> Skill {
         let skill = try skillStore.install(from: url)
@@ -725,7 +731,7 @@ final class AppState {
         try? keychain.setString(token, forKey: "github.token")
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         marketplace = MarketplaceService(githubToken: trimmed)
-        marketplaceInstaller = MarketplaceInstaller(githubToken: trimmed, skillStore: skillStore)
+        marketplaceInstaller = MarketplaceInstaller(githubToken: trimmed, skillStore: skillStore, mcpDirectory: mcpDirectory)
     }
 
     func searchMarketplace(

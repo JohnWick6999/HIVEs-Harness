@@ -140,6 +140,30 @@ struct SkillTests {
         #expect(reloaded.load(id: "custom-skill")?.useCount == 1)
     }
 
+    @Test("归档 30 天未用技能到 _archive")
+    func archiveStale() throws {
+        let dir = try makeSkillDirectory()
+        _ = try writeSkill(in: dir, folder: "old", id: "old-skill")
+        let oldTime = Date().addingTimeInterval(-31 * 24 * 60 * 60).timeIntervalSinceReferenceDate
+        let usage = "{\"old-skill\":{\"count\":1,\"lastUsed\":\(oldTime)}}"
+        try usage.write(
+            to: dir.appendingPathComponent(".usage.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let store = SkillStore(userDirectory: dir)
+        #expect(store.load(id: "old-skill") != nil)
+        #expect(store.archiveStale(days: 30) == ["old-skill"])
+        #expect(store.load(id: "old-skill") == nil)
+
+        let archivedURL = dir.appendingPathComponent("_archive/old-skill/SKILL.md")
+        #expect(FileManager.default.fileExists(atPath: archivedURL.path))
+
+        let reloaded = SkillStore(userDirectory: dir)
+        #expect(reloaded.load(id: "old-skill") == nil)
+    }
+
     @Test("技能工具在只读模式下可用")
     func workModeAllowsSkills() {
         #expect(WorkMode.chat.allows(tool: "list_skills"))

@@ -274,6 +274,68 @@ struct MarketplaceTests {
         #expect(store.load(id: "skill-creator") != nil)
     }
 
+    @Test("MCP 清单一键安装并默认停用")
+    func installMCPFromGitHub() async throws {
+        MarketplaceMockURLProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            if path == "/repos/acme/mcp" {
+                return httpJSON(request, [
+                    "name": "mcp",
+                    "full_name": "acme/mcp",
+                    "description": "mcp bundle",
+                    "default_branch": "main",
+                    "html_url": "https://github.com/acme/mcp",
+                    "owner": ["login": "acme"],
+                ])
+            }
+            if path == "/repos/acme/mcp/git/trees/main" {
+                return httpJSON(request, [
+                    "tree": [["path": "mcp.json", "type": "blob", "size": 100]]
+                ])
+            }
+            if request.url?.host == "raw.githubusercontent.com" {
+                let content = #"{"mcpServers":{"demo":{"command":"npx","args":["-y","demo-mcp"]}}}"#
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(content.utf8))
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let mcpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shizuku-market-mcp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: mcpDir, withIntermediateDirectories: true)
+        let installer = MarketplaceInstaller(
+            session: marketplaceSession(),
+            skillStore: store,
+            mcpDirectory: mcpDir
+        )
+        let item = MarketplaceItem(
+            id: "github:acme/mcp",
+            name: "mcp",
+            summary: "mcp bundle",
+            source: .github,
+            installURL: "https://github.com/acme/mcp"
+        )
+
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.isEmpty)
+        #expect(plan.mcpServers.count == 1)
+        #expect(plan.mcpServers[0].enabled == false)
+        #expect(plan.mcpServers[0].type == "stdio")
+
+        _ = try installer.install(plan)
+        let configs = MCPConfigLoader.load(directory: mcpDir)
+        #expect(configs.count == 1)
+        #expect(configs[0].id == "demo")
+        #expect(configs[0].command == "npx")
+    }
+
     @Test("没有 SKILL.md 时拒绝安装")
     func noSkillRejected() async throws {
         MarketplaceMockURLProtocol.handler = { request in

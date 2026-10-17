@@ -423,22 +423,43 @@ private struct MarketplaceDetailView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         } else {
-            Text("将安装 \(plan.files.count) 个技能\(plan.ref.isEmpty ? "" : "(ref: \(plan.ref))")")
-                .font(.headline)
-            ScrollView {
+            if !plan.files.isEmpty {
+                Text("将安装 \(plan.files.count) 个技能\(plan.ref.isEmpty ? "" : "(ref: \(plan.ref))")")
+                    .font(.headline)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(plan.files, id: \.skillID) { file in
+                            HStack(spacing: 6) {
+                                Image(systemName: "doc.text")
+                                    .foregroundStyle(.secondary)
+                                Text(file.skillID).font(.caption.weight(.medium))
+                                Text(file.path).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 130)
+            }
+
+            if !plan.mcpServers.isEmpty {
+                Text("将写入 \(plan.mcpServers.count) 个 MCP 服务器(默认停用)")
+                    .font(.headline)
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(plan.files, id: \.skillID) { file in
+                    ForEach(plan.mcpServers) { server in
                         HStack(spacing: 6) {
-                            Image(systemName: "doc.text")
+                            Image(systemName: "server.rack")
                                 .foregroundStyle(.secondary)
-                            Text(file.skillID).font(.caption.weight(.medium))
-                            Text(file.path).font(.caption2).foregroundStyle(.secondary)
+                            Text(server.name).font(.caption.weight(.medium))
+                            Text(server.type == "http" ? server.url : "\(server.command) \(server.args.joined(separator: " "))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 150)
 
             if !plan.warnings.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
@@ -482,7 +503,14 @@ private struct MarketplaceDetailView: View {
         installing = true
         do {
             let skills = try state.installMarketplacePlan(plan)
-            message = "已安装: " + skills.map(\.name).joined(separator: "、")
+            var parts: [String] = []
+            if !skills.isEmpty {
+                parts.append("技能 " + skills.map(\.name).joined(separator: "、"))
+            }
+            if !plan.mcpServers.isEmpty {
+                parts.append("MCP \(plan.mcpServers.count) 个(默认停用)")
+            }
+            message = "已安装: " + parts.joined(separator: " · ")
             error = nil
         } catch {
             self.error = error.localizedDescription

@@ -20,6 +20,8 @@ public struct MarketplaceInstallPlan: Sendable, Equatable {
     public var overwriting: [String]
     public var ref: String
     public var isBuiltin: Bool
+    /// 随包安装的 MCP 服务器(默认停用)
+    public var mcpServers: [MCPServerConfig]
 
     public init(
         item: MarketplaceItem,
@@ -27,7 +29,8 @@ public struct MarketplaceInstallPlan: Sendable, Equatable {
         warnings: [String] = [],
         overwriting: [String] = [],
         ref: String = "",
-        isBuiltin: Bool = false
+        isBuiltin: Bool = false,
+        mcpServers: [MCPServerConfig] = []
     ) {
         self.item = item
         self.files = files
@@ -35,6 +38,7 @@ public struct MarketplaceInstallPlan: Sendable, Equatable {
         self.overwriting = overwriting
         self.ref = ref
         self.isBuiltin = isBuiltin
+        self.mcpServers = mcpServers
     }
 }
 
@@ -43,15 +47,18 @@ public struct MarketplaceInstaller: Sendable {
     private let github: GitHubMarketplaceClient
     private let modelScope: ModelScopeMarketplaceClient
     private let skillStore: SkillStore
+    private let mcpDirectory: URL?
 
     public init(
         githubToken: String? = nil,
         session: URLSession = .shared,
-        skillStore: SkillStore
+        skillStore: SkillStore,
+        mcpDirectory: URL? = nil
     ) {
         self.github = GitHubMarketplaceClient(session: session, token: githubToken)
         self.modelScope = ModelScopeMarketplaceClient(session: session)
         self.skillStore = skillStore
+        self.mcpDirectory = mcpDirectory
     }
 
     public func plan(for item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
@@ -78,6 +85,12 @@ public struct MarketplaceInstaller: Sendable {
         let repository = try await github.repository(owner: target.owner, repo: target.repo)
         let ref = target.ref ?? repository.defaultBranch
         let tree = try await github.tree(owner: target.owner, repo: target.repo, ref: ref)
+        let mcpServers = try await parseMCPServers(
+            tree: tree,
+            owner: target.owner,
+            repo: target.repo,
+            ref: ref
+        )
 
         let candidates = tree.filter { entry in
             guard entry.type == "blob", entry.path.hasSuffix("SKILL.md") else { return false }
@@ -87,6 +100,14 @@ public struct MarketplaceInstaller: Sendable {
         }
 
         guard !candidates.isEmpty else {
+            if !mcpServers.isEmpty {
+                return MarketplaceInstallPlan(
+                    item: item,
+                    warnings: ["MCP 服务器会启动外部进程或访问网络,安装后默认停用。"],
+                    ref: ref,
+                    mcpServers: mcpServers
+                )
+            }
             let hasPluginManifest = tree.contains {
                 $0.path.hasSuffix("plugin.json") || $0.path.hasSuffix("marketplace.json") || $0.path.hasSuffix("server.json")
             }
@@ -143,12 +164,16 @@ public struct MarketplaceInstaller: Sendable {
         guard !files.isEmpty else { throw MarketplaceError.noInstallableSkill }
         let existing = Set(skillStore.all().map(\.id))
         let overwriting = files.map(\.skillID).filter { existing.contains($0) }
+        if !mcpServers.isEmpty {
+            warnings.append("随包安装 \(mcpServers.count) 个 MCP 服务器(默认停用)。")
+        }
         return MarketplaceInstallPlan(
             item: item,
             files: files,
             warnings: warnings,
             overwriting: overwriting,
-            ref: ref
+            ref: ref,
+            mcpServers: mcpServers
         )
     }
 
@@ -159,8 +184,17 @@ public struct MarketplaceInstaller: Sendable {
             let id = plan.item.id.replacingOccurrences(of: "builtin:", with: "")
             return skillStore.load(id: id).map { [$0] } ?? []
         }
-        guard !plan.files.isEmpty else {
+        guard !plan.files.isEmpty || !plan.mcpServers.isEmpty else {
             throw MarketplaceError.noInstallableSkill
+        }
+        if !plan.mcpServers.isEmpty {
+            guard let mcpDirectory else {
+                throw MarketplaceError.invalidPackage("未配置 MCP 目录,无法安装服务器")
+            }
+            var existing = MCPConfigLoader.load(directory: mcpDirectory)
+            let existingIDs = Set(existing.map(\.id))
+            existing.append(contentsOf: plan.mcpServers.filter { !existingIDs.contains($0.id) })
+            try MCPConfigLoader.save(existing, directory: mcpDirectory)
         }
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("shizuku-market-\(UUID().uuidString)", isDirectory: true)
@@ -255,6 +289,111 @@ public struct MarketplaceInstaller: Sendable {
             overwriting: installFiles.map(\.skillID).filter { existing.contains($0) },
             ref: "master"
         )
+    }
+
+    // MARK: - MCP 清单
+
+    private func parseMCPServers(
+        tree: [GitHubTreeEntry],
+        owner: String,
+        repo: String,
+        ref: String
+    ) async throws -> [MCPServerConfig] {
+        let candidates = tree.filter { entry in
+            guard entry.type == "blob" else { return false }
+            let name = URL(fileURLWithPath: entry.path).lastPathComponent
+            return ["mcp.json", ".mcp.json", "server.json"].contains(name)
+        }.prefix(4)
+
+        var result: [MCPServerConfig] = []
+        var seen = Set<String>()
+        for entry in candidates {
+            guard let raw = try? await github.rawFile(
+                owner: owner,
+                repo: repo,
+                ref: ref,
+                path: entry.path
+            ) else { continue }
+            for config in Self.parseMCPJSON(raw) where seen.insert(config.id).inserted {
+                result.append(config)
+            }
+        }
+        return result
+    }
+
+    static func parseMCPJSON(_ raw: String) -> [MCPServerConfig] {
+        guard let data = raw.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [] }
+
+        // Claude / VS Code 风格:{"mcpServers": {"name": {...}}}
+        if let servers = object["mcpServers"] as? [String: Any] {
+            return servers.compactMap { key, value in
+                guard let dict = value as? [String: Any] else { return nil }
+                let command = dict["command"] as? String ?? ""
+                let url = dict["url"] as? String ?? ""
+                if command.isEmpty && url.isEmpty { return nil }
+                return MCPServerConfig(
+                    id: Self.sanitizeMCPID(key),
+                    name: key,
+                    description: dict["description"] as? String ?? "",
+                    type: url.isEmpty ? "stdio" : "http",
+                    command: command,
+                    args: dict["args"] as? [String] ?? [],
+                    url: url,
+                    headers: dict["headers"] as? [String: String] ?? [:],
+                    enabled: false
+                )
+            }
+        }
+
+        // MCP Registry server.json
+        guard let name = object["name"] as? String else { return [] }
+        let display = object["description"] as? String ?? name
+        let packages = object["packages"] as? [[String: Any]] ?? []
+        if let pkg = packages.first(where: { ($0["registryType"] as? String) == "npm" }),
+           let identifier = pkg["identifier"] as? String {
+            return [
+                MCPServerConfig(
+                    id: Self.sanitizeMCPID(name),
+                    name: display,
+                    description: object["description"] as? String ?? "",
+                    type: "stdio",
+                    command: "npx",
+                    args: ["-y", identifier],
+                    enabled: false
+                )
+            ]
+        }
+        let remotes = object["remotes"] as? [[String: Any]] ?? []
+        if let remote = remotes.first, let url = remote["url"] as? String {
+            return [
+                MCPServerConfig(
+                    id: Self.sanitizeMCPID(name),
+                    name: display,
+                    description: object["description"] as? String ?? "",
+                    type: "http",
+                    url: url,
+                    enabled: false
+                )
+            ]
+        }
+        return []
+    }
+
+    static func sanitizeMCPID(_ raw: String) -> String {
+        var result = ""
+        for character in raw.lowercased() {
+            if (character.isASCII && character.isLetter)
+                || (character.isASCII && character.isNumber)
+                || character == "-" || character == "_" || character == "." {
+                result.append(character)
+            } else {
+                result.append("-")
+            }
+        }
+        result = result.trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
+        return result.isEmpty ? "mcp-server" : String(result.prefix(60))
     }
 
     // MARK: - 辅助

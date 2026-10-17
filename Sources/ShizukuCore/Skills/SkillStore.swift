@@ -208,6 +208,37 @@ public final class SkillStore: @unchecked Sendable {
         reload()
     }
 
+    /// 归档超过 `days` 天未使用的用户技能到 `_archive/`,不删除内容。
+    @discardableResult
+    public func archiveStale(days: Int = 30) -> [String] {
+        let threshold = Date().addingTimeInterval(-Double(days) * 24 * 60 * 60)
+        let stale = all().filter { skill in
+            guard !skill.isBuiltin, let lastUsed = skill.lastUsedAt else { return false }
+            return lastUsed < threshold
+        }
+        guard !stale.isEmpty else { return [] }
+
+        let fm = FileManager.default
+        let archiveRoot = userDirectory.appendingPathComponent("_archive", isDirectory: true)
+        try? fm.createDirectory(at: archiveRoot, withIntermediateDirectories: true)
+        var archived: [String] = []
+        for skill in stale {
+            guard let source = skill.directory else { continue }
+            let target = archiveRoot.appendingPathComponent(skill.id, isDirectory: true)
+            if fm.fileExists(atPath: target.path) {
+                try? fm.removeItem(at: target)
+            }
+            do {
+                try fm.moveItem(at: source, to: target)
+                archived.append(skill.id)
+            } catch {
+                continue
+            }
+        }
+        reload()
+        return archived
+    }
+
     // MARK: - 扫描与解析
 
     static func scan(_ directory: URL) -> [Skill] {
@@ -223,6 +254,7 @@ public final class SkillStore: @unchecked Sendable {
             var isDirectory: ObjCBool = false
             guard fm.fileExists(atPath: entry.path, isDirectory: &isDirectory),
                   isDirectory.boolValue,
+                  !entry.lastPathComponent.hasPrefix("_"),
                   let text = try? String(
                       contentsOf: entry.appendingPathComponent("SKILL.md"),
                       encoding: .utf8
