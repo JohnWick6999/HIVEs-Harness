@@ -19,7 +19,8 @@ struct ChatView: View {
     @AppStorage(HiveTheme.showUsageBarKey) private var showUsageBar = true
     @FocusState private var composerFocused: Bool
     @State private var showUsage = false
-    @State private var scrollTarget: UUID?
+    @State private var scrollRequest: ScrollRequest?
+    @State private var scrollPosition: UUID?
     @State private var artifactPreview: Artifact?
     @State private var artifactWindow: Artifact?
 
@@ -48,7 +49,10 @@ struct ChatView: View {
                     let turns = ConversationTurnBuilder.build(state.messages)
                     if !turns.isEmpty {
                         ConversationRail(turns: turns) { id in
-                            scrollTarget = id
+                            scrollRequest = ScrollRequest(
+                                messageID: id,
+                                nonce: (scrollRequest?.nonce ?? 0) + 1
+                            )
                         }
                     }
                 }
@@ -511,18 +515,23 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
+                .scrollTargetLayout()
             }
+            .scrollPosition(id: $scrollPosition, anchor: .top)
             .onChange(of: state.messages.last?.content.plainText) {
                 withAnimation {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
-            .onChange(of: scrollTarget) { _, id in
-                guard let id else { return }
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(id, anchor: .top)
+            .onChange(of: scrollRequest) { _, request in
+                guard let request else { return }
+                // 等 LazyVStack 完成一次布局后再滚动;连续点击同一轮也能再次触发。
+                DispatchQueue.main.async {
+                    scrollPosition = request.messageID
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo(request.messageID, anchor: .top)
+                    }
                 }
-                scrollTarget = nil
             }
         }
     }
@@ -1033,6 +1042,13 @@ struct ChatView: View {
             await state.sendStreaming(text, attachments: attachments)
         }
     }
+}
+
+// MARK: - 滚动请求
+
+private struct ScrollRequest: Equatable {
+    let messageID: UUID
+    let nonce: Int
 }
 
 // MARK: - 消息行
