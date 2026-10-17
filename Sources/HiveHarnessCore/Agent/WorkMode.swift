@@ -59,6 +59,7 @@ public enum WorkMode: String, Codable, Sendable, Equatable, CaseIterable {
     public static let readOnlyTools: Set<String> = [
         "read_file", "list_dir", "search_memory", "add_memory", "todowrite", "todoread",
         "list_skills", "run_skill", "ask_user",
+        "run_subagent", "run_subagent_cluster", "spawn_background_task",
     ]
 
     public static let externalExecutionTools: Set<String> = [

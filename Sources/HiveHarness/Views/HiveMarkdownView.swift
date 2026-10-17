@@ -1,37 +1,98 @@
 import AppKit
 import SwiftUI
+import HiveHarnessCore
 
-/// 轻量 Markdown:普通段落 + 围栏代码块(带语言标签与复制按钮)。
+/// 轻量 Markdown:标题/段落/列表/引用/代码块/分隔线。
 struct HiveMarkdownView: View {
     let text: String
     var isUser: Bool = false
 
-    private enum Block: Identifiable {
-        case text(String)
-        case code(language: String, code: String)
+    private var blocks: [MarkdownBlock] {
+        let parsed = MarkdownParser.parse(text)
+        return parsed.isEmpty ? [.paragraph(text)] : parsed
+    }
 
-        var id: String {
-            switch self {
-            case .text(let value): return "t-\(value.hashValue)"
-            case .code(let language, let code): return "c-\(language)-\(code.hashValue)"
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                blockView(block)
+                    .padding(.top, index == 0 ? 0 : topSpacing(block))
             }
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .text(let value):
-                    Text(attributed(value))
-                        .font(.system(.body, design: .rounded))
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                case .code(let language, let code):
-                    HiveCodeBlock(language: language, code: code)
+    @ViewBuilder
+    private func blockView(_ block: MarkdownBlock) -> some View {
+        switch block {
+        case let .heading(level, value):
+            Text(attributed(value))
+                .font(.system(size: headingSize(level), weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .paragraph(let value):
+            Text(attributed(value))
+                .font(.system(.body, design: .rounded))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .bullet(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Circle()
+                            .fill(HiveTheme.amber)
+                            .frame(width: 4, height: 4)
+                            .padding(.top, 6)
+                        Text(attributed(item))
+                            .font(.system(.body, design: .rounded))
+                            .lineSpacing(2)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
+
+        case .ordered(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text("\(index + 1).")
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(HiveTheme.amberDeep)
+                            .frame(width: 18, alignment: .trailing)
+                        Text(attributed(item))
+                            .font(.system(.body, design: .rounded))
+                            .lineSpacing(2)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+        case .quote(let value):
+            HStack(alignment: .top, spacing: 9) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(HiveTheme.amber.opacity(0.6))
+                    .frame(width: 3)
+                Text(attributed(value))
+                    .font(.system(.callout, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
+                    .textSelection(.enabled)
+            }
+            .padding(.vertical, 2)
+
+        case let .code(language, code):
+            HiveCodeBlock(language: language, code: code)
+
+        case .divider:
+            Rectangle()
+                .fill(HiveTheme.hairline)
+                .frame(height: 1)
+                .padding(.vertical, 2)
         }
     }
 
@@ -42,45 +103,22 @@ struct HiveMarkdownView: View {
         )) ?? AttributedString(value)
     }
 
-    private var blocks: [Block] {
-        var result: [Block] = []
-        var textLines: [String] = []
-        var codeLines: [String] = []
-        var inCode = false
-        var language = ""
+    private func headingSize(_ level: Int) -> CGFloat {
+        switch level {
+        case 1: return 24
+        case 2: return 20
+        case 3: return 17
+        case 4: return 15
+        default: return 14
+        }
+    }
 
-        func flushText() {
-            guard !textLines.isEmpty else { return }
-            result.append(.text(textLines.joined(separator: "\n")))
-            textLines.removeAll()
+    private func topSpacing(_ block: MarkdownBlock) -> CGFloat {
+        switch block {
+        case .heading(let level, _): return level <= 2 ? 7 : 4
+        case .divider: return 3
+        default: return 0
         }
-        func flushCode() {
-            guard inCode else { return }
-            result.append(.code(language: language, code: codeLines.joined(separator: "\n")))
-            codeLines.removeAll()
-            language = ""
-        }
-
-        for line in text.components(separatedBy: "\n") {
-            if line.hasPrefix("```") {
-                if inCode {
-                    flushCode()
-                    inCode = false
-                } else {
-                    flushText()
-                    language = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                    inCode = true
-                }
-            } else if inCode {
-                codeLines.append(line)
-            } else {
-                textLines.append(line)
-            }
-        }
-        if inCode { flushCode() }
-        flushText()
-        if result.isEmpty { result.append(.text(text)) }
-        return result
     }
 }
 

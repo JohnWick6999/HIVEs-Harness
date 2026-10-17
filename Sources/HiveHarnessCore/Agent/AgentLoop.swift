@@ -7,12 +7,21 @@ public struct ToolTrace: Sendable, Equatable {
     public let result: String
     /// 产出文件路径(UI 可点击打开)
     public let files: [String]
+    /// 文件变更快照(用于 diff 提示)
+    public let changes: [FileChange]
 
-    public init(tool: String, arguments: String, result: String, files: [String] = []) {
+    public init(
+        tool: String,
+        arguments: String,
+        result: String,
+        files: [String] = [],
+        changes: [FileChange] = []
+    ) {
         self.tool = tool
         self.arguments = arguments
         self.result = result
         self.files = files
+        self.changes = changes
     }
 }
 
@@ -300,6 +309,17 @@ public actor AgentLoop {
             只访问公开 http/https;本机/私网地址会被拒绝;网络请求会先请求用户审批。
             """
             : ""
+        let subagentSection = mode.allows(tool: "run_subagent")
+            ? """
+
+            [子代理]
+            需要独立调研、并行比较或多视角审查时:
+            - run_subagent:单任务,等待结果后由你汇总。
+            - run_subagent_cluster:2-4 个任务并行。
+            - spawn_background_task:长任务,立即返回任务 id,不要轮询。
+            子代理上下文独立且只读;最终结论仍由你负责。
+            """
+            : ""
         return """
         \(personaPrompt)
 
@@ -311,6 +331,7 @@ public actor AgentLoop {
 
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
         \(imageHint)
+        \(subagentSection)
         \(webSection)
 
         文件工具(list_dir/read_file)可以读取任意本地路径,包括工作区外的绝对路径;不能因为路径在工作区外就声称无法读取。
@@ -945,7 +966,8 @@ public actor AgentLoop {
             tool: call.name,
             arguments: call.arguments,
             result: String(result.text.prefix(500)),
-            files: result.files.map(\.path)
+            files: result.files.map(\.path),
+            changes: result.changes
         )
         let message = ChatMessage(
             role: .tool,
