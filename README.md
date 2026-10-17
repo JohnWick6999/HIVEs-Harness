@@ -23,6 +23,7 @@
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
 | 🏪 插件市场 | 内置目录 + GitHub + 魔搭;瀑布流卡片、链接导入、安装预检;首版只安装 SKILL.md | ✅ |
 | 🌐 本地网关 | 127.0.0.1 上的 OpenAI 兼容 `/v1/models` + `/v1/chat/completions`,可选 Bearer Token | ✅ |
+| 🧬 技能自进化 | 成功轨迹 → 反思 → 技能提案;人工批准后进入技能库,自动提炼可开关 | ✅ |
 | 🪄 技能系统 | 内置 5 个技能 + 用户 SKILL.md;list_skills / run_skill;启停与详情页 | ✅ |
 | 🔌 MCP 客户端 | JSON-RPC 2.0 over stdio / Streamable HTTP,servers.json,工具以 `mcp__<server>__` 前缀注册,仅完全控制模式可用 | ✅ |
 | 🧩 插件系统 | plugin.json 清单扫描 + 安全策略(网络/执行时限/域名白名单) | ✅ |
@@ -57,7 +58,7 @@
 | `Persona/` | Persona 模型 + 5 内置人格(Bundle 资源,id=文件名) |
 | `Marketplace/` | GitHub / ModelScope 目录适配、链接解析、统一卡片、SKILL.md 安装器 |
 | `Gateway/` | HTTP/1.1 解析、OpenAI 兼容路由、NWListener 本地网关 |
-| `Skills/` | 内置技能 Bundle、SKILL.md frontmatter 解析、用户技能安装/启停、list_skills/run_skill |
+| `Skills/` | 内置技能 Bundle、SKILL.md 解析、安装/启停、list_skills/run_skill、SkillEvolver 自进化 |
 | `MCP/` | JSON-RPC 2.0 编解码、stdio 子进程 / Streamable HTTP 传输、配置加载、工具适配器 |
 | `Plugin/` | plugin.json 扫描、安全策略(容错解码) |
 
@@ -66,7 +67,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,113 项用例覆盖全部核心模块
+- 测试:swift-testing,118 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 
@@ -113,6 +114,7 @@ swift run ShizukuClaw
 | 配置文件 | `~/Library/Application Support/ShizukuClaw/config.json` |
 | MCP 配置 | `~/Documents/ShizukuClaw/mcp/servers.json` |
 | 用户技能 | `~/Documents/ShizukuClaw/skills/<id>/SKILL.md` |
+| 技能提案 | `~/Documents/ShizukuClaw/skills/_proposals/<id>.json` |
 | API Key | 钥匙串(`com.shizukuclaw.app`,按 `provider.<id>.api_key` 存储) |
 
 ### MCP 配置示例

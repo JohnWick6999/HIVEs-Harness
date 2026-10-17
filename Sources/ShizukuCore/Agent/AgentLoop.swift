@@ -172,6 +172,20 @@ public actor AgentLoop {
         personas.listPersonas()
     }
 
+    /// 单次无工具补全(技能复盘、标题生成等内部用途)。
+    public func complete(prompt: String, system: String) async throws -> String {
+        let registry = ModelRegistry(config: config, keychain: keychain)
+        let candidates = try registry.agentCandidates()
+        let usable = candidates.filter { $0.provider.isOllama || !$0.apiKey.isEmpty }
+        guard let first = usable.first else { throw LLMError.invalidResponse }
+        let client = clientFactory?(first) ?? makeClient(for: first)
+        let response = try await client.chat(
+            messages: [.text(.system, system), .text(.user, prompt)],
+            tools: []
+        )
+        return response.content
+    }
+
     /// 恢复历史、追加用户消息、检索记忆并构建系统提示词。
     private func prepareSession(
         message: String,

@@ -58,21 +58,25 @@ public struct AppConfig: Codable, Sendable, Equatable {
         public var defaultPersona: String
         /// 工作模式(chat / sandbox / full)
         public var workMode: WorkMode
+        /// 成功任务后是否自动提炼技能提案(需人工批准后启用)
+        public var autoEvolveSkills: Bool
 
         public init(
             maxRounds: Int = 6,
             systemPrompt: String = "你是一个智能助手,请根据用户意图选择工具或直接回答。",
             defaultPersona: String = "shizuku",
-            workMode: WorkMode = .sandbox
+            workMode: WorkMode = .sandbox,
+            autoEvolveSkills: Bool = true
         ) {
             self.maxRounds = maxRounds
             self.systemPrompt = systemPrompt
             self.defaultPersona = defaultPersona
             self.workMode = workMode
+            self.autoEvolveSkills = autoEvolveSkills
         }
 
         private enum CodingKeys: String, CodingKey {
-            case maxRounds, systemPrompt, defaultPersona, workMode
+            case maxRounds, systemPrompt, defaultPersona, workMode, autoEvolveSkills
         }
 
         /// 兼容旧配置文件:workMode 缺失时按安全模式处理。
@@ -83,6 +87,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
                 ?? "你是一个智能助手,请根据用户意图选择工具或直接回答。"
             defaultPersona = try container.decodeIfPresent(String.self, forKey: .defaultPersona) ?? "shizuku"
             workMode = try container.decodeIfPresent(WorkMode.self, forKey: .workMode) ?? .sandbox
+            autoEvolveSkills = try container.decodeIfPresent(Bool.self, forKey: .autoEvolveSkills) ?? true
         }
     }
 

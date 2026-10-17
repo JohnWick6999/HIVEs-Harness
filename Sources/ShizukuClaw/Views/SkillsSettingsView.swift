@@ -14,6 +14,19 @@ struct SkillsSettingsView: View {
                 Text("\(state.skills.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle(
+                    "自动提炼",
+                    isOn: Binding(
+                        get: { state.config.agent.autoEvolveSkills },
+                        set: {
+                            state.config.agent.autoEvolveSkills = $0
+                            state.saveConfig()
+                        }
+                    )
+                )
+                .toggleStyle(.switch)
+                .font(.caption)
+                .help("成功且有多次工具调用的任务会在后台反思生成技能提案,批准后才启用")
                 Spacer()
                 Button("打开目录") {
                     NSWorkspace.shared.open(state.skillsDirectory)
@@ -26,6 +39,22 @@ struct SkillsSettingsView: View {
             Divider()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
+                    if !state.skillProposals.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text("待审技能提案")
+                                    .font(.caption.weight(.semibold))
+                                Text("\(state.skillProposals.count)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(state.skillProposals) { proposal in
+                                proposalRow(proposal)
+                            }
+                        }
+                        .padding(.bottom, 6)
+                        Divider()
+                    }
                     if state.skills.isEmpty {
                         Text("暂无技能。可把含 SKILL.md 的目录放入技能目录。")
                             .font(.caption)
@@ -42,6 +71,32 @@ struct SkillsSettingsView: View {
         .sheet(item: $selected) { skill in
             SkillDetailView(skill: skill)
         }
+    }
+
+    private func proposalRow(_ proposal: SkillProposal) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(proposal.name)
+                    .font(.callout.weight(.medium))
+                Text(proposal.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                if !proposal.reason.isEmpty {
+                    Text("理由: \(proposal.reason)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+            Button("批准") { state.approveSkillProposal(proposal) }
+            Button("拒绝") { state.rejectSkillProposal(proposal) }
+        }
+        .padding(8)
+        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func skillRow(_ skill: Skill) -> some View {

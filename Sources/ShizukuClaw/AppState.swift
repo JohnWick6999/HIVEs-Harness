@@ -30,6 +30,10 @@ final class AppState {
     var pendingDraft: String?
     /// 已安装技能(内置 + 用户)
     var skills: [Skill] = []
+    /// 待审技能提案
+    var skillProposals: [SkillProposal] = []
+    /// 自动进化冷却
+    private var lastEvolutionAttempt = Date.distantPast
     /// 本地 OpenAI 兼容网关
     var gatewayRunning = false
     var gatewayPort: Int?
@@ -47,6 +51,7 @@ final class AppState {
     private let personas: PersonaStore
     private let mcpRegistry: MCPRegistry
     let skillStore: SkillStore
+    let skillEvolver: SkillEvolver
     private var marketplace: MarketplaceService
     private var marketplaceInstaller: MarketplaceInstaller
 
@@ -83,6 +88,7 @@ final class AppState {
         try? FileManager.default.createDirectory(at: skillsDir, withIntermediateDirectories: true)
         skillsDirectory = skillsDir
         skillStore = SkillStore(userDirectory: skillsDir)
+        skillEvolver = SkillEvolver(skillsDirectory: skillsDir)
 
         let githubToken = (try? keychain.string(forKey: "github.token")) ?? ""
         marketplace = MarketplaceService(githubToken: githubToken)
@@ -115,6 +121,7 @@ final class AppState {
 
         loadSessions()
         skills = skillStore.all()
+        skillProposals = skillEvolver.proposals()
 
         if config.gateway.enabled {
             Task { [weak self] in
@@ -411,6 +418,16 @@ final class AppState {
                 threadID: requestThread,
                 persona: requestPersona
             )
+            maybeEvolve(
+                AgentTrajectory(
+                    userMessage: trimmed,
+                    reply: result.reply,
+                    persona: requestPersona,
+                    threadID: requestThread,
+                    traces: result.trace
+                ),
+                loop: loop
+            )
         } catch {
             errorMessage = "调用失败: \(error.localizedDescription)"
         }
@@ -503,6 +520,16 @@ final class AppState {
                         taskPlan = (try? store.loadTaskPlan(threadID: requestThread, persona: requestPersona)) ?? .empty
                         contextState = (try? store.loadContextState(threadID: requestThread, persona: requestPersona)) ?? .empty
                     }
+                    maybeEvolve(
+                        AgentTrajectory(
+                            userMessage: trimmed,
+                            reply: result.reply,
+                            persona: requestPersona,
+                            threadID: requestThread,
+                            traces: result.trace
+                        ),
+                        loop: loop
+                    )
                 }
             }
         } catch {
@@ -613,6 +640,47 @@ final class AppState {
         let skill = try skillStore.install(from: url)
         skills = skillStore.all()
         return skill
+    }
+
+    // MARK: - 技能自进化
+
+    func reloadSkillProposals() {
+        skillProposals = skillEvolver.proposals()
+    }
+
+    func approveSkillProposal(_ proposal: SkillProposal) {
+        _ = try? skillEvolver.approve(proposal)
+        reloadSkills()
+        reloadSkillProposals()
+    }
+
+    func rejectSkillProposal(_ proposal: SkillProposal) {
+        try? skillEvolver.reject(proposal)
+        reloadSkillProposals()
+    }
+
+    /// 成功且有多次工具调用的任务,后台反思生成技能提案。
+    private func maybeEvolve(_ trajectory: AgentTrajectory, loop: AgentLoop) {
+        guard config.agent.autoEvolveSkills, trajectory.traces.count >= 2 else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastEvolutionAttempt) > 600 else { return }
+        lastEvolutionAttempt = now
+
+        let existing = skills.map(\.id)
+        Task { [weak self] in
+            guard let self else { return }
+            let proposal = await self.skillEvolver.consider(
+                trajectory: trajectory,
+                existingIDs: existing,
+                reflect: { system, user in
+                    try await loop.complete(prompt: user, system: system)
+                }
+            )
+            if let proposal {
+                self.skillProposals = self.skillEvolver.proposals()
+                self.errorMessage = "已生成技能提案: \(proposal.name)(在设置 → 技能中批准)"
+            }
+        }
     }
 
     // MARK: - 插件市场
