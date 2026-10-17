@@ -24,7 +24,7 @@
 | 🧩 插件系统 | plugin.json 清单扫描 + 安全策略(网络/执行时限/域名白名单) | ✅ |
 | 🖥️ 菜单栏常驻 | 顶栏图标 + 快速提问,随时唤起 | ✅ |
 | 🔑 密钥安全 | API Key 存钥匙串(Keychain),不进配置文件 | ✅ |
-| ⚙️ 多模型接入 | 任意 OpenAI 兼容端点(baseURL 可配)或本地 Ollama | ✅ |
+| ⚙️ 多模型接入 | 多提供商 / 多模型 / 模型组回退链;任意 OpenAI 兼容端点或本地 Ollama;每提供商独立 Key | ✅ |
 
 ## 🏗️ 架构
 
@@ -45,7 +45,7 @@
 
 | 模块 | 职责 |
 |---|---|
-| `Config/` | AppConfig(Codable)+ KeychainStore(钥匙串封装) |
+| `Config/` | AppConfig(Codable)、KeychainStore、ModelRegistry(提供商/模型/回退组) |
 | `LLM/` | LLMClient 协议、OpenAI 兼容客户端(SSE 流式)、本地 Ollama 客户端 |
 | `Storage/` | 系统 SQLite3 封装(chat_records/memories/checkpoints/kv_store/task_plans/session_context)、哈希向量余弦检索 |
 | `Tools/` | Tool 协议(async)、注册表、SafePath 工作区沙箱、6 个内置工具 + todowrite/todoread |
@@ -59,7 +59,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,80 项用例覆盖全部核心模块
+- 测试:swift-testing,87 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

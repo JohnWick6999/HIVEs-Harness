@@ -68,7 +68,11 @@ final class AppState {
         }
 
         let loadedConfig = configStore.load()
-        config = loadedConfig
+        let normalized = loadedConfig.normalized()
+        config = normalized
+        if normalized != loadedConfig {
+            try? configStore.save(normalized)
+        }
         apiKey = (try? keychain.string(forKey: "llm.api_key")) ?? ""
         selectedPersona = loadedConfig.agent.defaultPersona
         store = try! SQLiteStore(path: base.appendingPathComponent("agent.db").path)
@@ -298,6 +302,27 @@ final class AppState {
     func saveConfig() {
         try? configStore.save(config)
         try? keychain.setString(apiKey, forKey: "llm.api_key")
+    }
+
+    // MARK: - 模型配置
+
+    /// 默认模型组首个模型的可读名称(顶栏展示)。
+    var activeModelName: String {
+        let normalized = config.normalized()
+        guard let group = normalized.modelGroups[normalized.defaultModelGroup],
+              let modelID = group.models.first,
+              let model = normalized.models[modelID]
+        else { return config.llm.model }
+        let provider = normalized.providers[model.provider]?.name ?? model.provider
+        return "\(provider) / \(model.name)"
+    }
+
+    func providerKey(_ providerID: String) -> String {
+        (try? keychain.string(forKey: ModelRegistry.apiKeyKey(providerID: providerID))) ?? ""
+    }
+
+    func setProviderKey(_ key: String, providerID: String) {
+        try? keychain.setString(key, forKey: ModelRegistry.apiKeyKey(providerID: providerID))
     }
 
     /// 清空当前对话(仅内存,历史仍保留在 checkpoint 中可刷新恢复)

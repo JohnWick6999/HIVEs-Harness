@@ -8,7 +8,7 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var state = state
         TabView {
-            llmTab($state)
+            ModelsSettingsView()
                 .tabItem { Label("模型", systemImage: "cpu") }
             agentTab($state)
                 .tabItem { Label("Agent", systemImage: "gearshape.2") }
@@ -17,7 +17,7 @@ struct SettingsView: View {
             aboutTab
                 .tabItem { Label("关于", systemImage: "info.circle") }
         }
-        .frame(width: 460, height: 420)
+        .frame(width: 760, height: 600)
         .padding(16)
     }
 
@@ -29,55 +29,6 @@ struct SettingsView: View {
             .onAppear {
                 state.loadMemories()
             }
-    }
-
-    // MARK: - 模型设置
-
-    private func llmTab(_ state: Bindable<AppState>) -> some View {
-        Form {
-            Picker("供应商", selection: state.config.llm.provider) {
-                Text("OpenAI 兼容端点").tag("openai_compatible")
-                Text("本地 Ollama").tag("ollama")
-            }
-            TextField("Base URL", text: state.config.llm.baseURL)
-                .textFieldStyle(.roundedBorder)
-            TextField("模型", text: state.config.llm.model)
-                .textFieldStyle(.roundedBorder)
-            SecureField("API Key(存入钥匙串)", text: state.apiKey)
-                .textFieldStyle(.roundedBorder)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("温度 \(state.config.llm.temperature.wrappedValue, specifier: "%.1f")")
-                Slider(value: state.config.llm.temperature, in: 0...1.5, step: 0.1)
-            }
-            HStack {
-                Text("上下文窗口")
-                Spacer()
-                TextField("32768", value: state.config.llm.contextWindow, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 90)
-                Text("tokens").font(.caption).foregroundStyle(.secondary)
-            }
-            HStack {
-                Text("最大输出")
-                Spacer()
-                TextField("4096", value: state.config.llm.maxOutputTokens, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 90)
-                Text("tokens").font(.caption).foregroundStyle(.secondary)
-            }
-            Text("未知窗口按 32768 估算;达到可用预算 85% 时自动压缩早期历史。")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            HStack {
-                Spacer()
-                Button("保存") {
-                    state.wrappedValue.saveConfig()
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding()
     }
 
     // MARK: - Agent 设置

@@ -24,6 +24,8 @@ public struct AgentResult: Sendable, Equatable {
     public let memories: [MemoryItem]
     public let engine: String
     public let trace: [ToolTrace]
+    /// 实际成功响应的模型 id(回退后可能不是首选)
+    public let activeModel: String
 
     public init(
         success: Bool,
@@ -31,7 +33,8 @@ public struct AgentResult: Sendable, Equatable {
         reply: String,
         memories: [MemoryItem],
         engine: String,
-        trace: [ToolTrace]
+        trace: [ToolTrace],
+        activeModel: String = ""
     ) {
         self.success = success
         self.persona = persona
@@ -39,6 +42,7 @@ public struct AgentResult: Sendable, Equatable {
         self.memories = memories
         self.engine = engine
         self.trace = trace
+        self.activeModel = activeModel
     }
 }
 
@@ -80,6 +84,8 @@ public actor AgentLoop {
     private let toolsOverride: [any Tool]?
     /// 审批回调(由平台壳注入);nil 时外部写入/执行一律拒绝
     private let approvalHandler: ApprovalHandler?
+    /// 测试注入:按解析后的模型创建客户端(优先于真实网络客户端)
+    private let clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)?
 
     /// 历史保留条数(对齐原版 40)
     private let historyLimit = 40
@@ -95,7 +101,8 @@ public actor AgentLoop {
         workspace: URL = FileManager.default.temporaryDirectory,
         clientOverride: (any LLMClient)? = nil,
         toolsOverride: [any Tool]? = nil,
-        approvalHandler: ApprovalHandler? = nil
+        approvalHandler: ApprovalHandler? = nil,
+        clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)? = nil
     ) {
         self.store = store
         self.config = config
@@ -105,6 +112,7 @@ public actor AgentLoop {
         self.clientOverride = clientOverride
         self.toolsOverride = toolsOverride
         self.approvalHandler = approvalHandler
+        self.clientFactory = clientFactory
     }
 
     // MARK: - 会话准备
@@ -126,8 +134,24 @@ public actor AgentLoop {
     }
 
     /// 运行模式:真实客户端 + 工具集,或无 Key 本地回退。
+    /// 一组按顺序尝试的模型客户端(同一次请求内回退)。
+    private struct ModelPool {
+        struct Entry {
+            let id: String
+            let model: ModelConfig
+            let client: any LLMClient
+        }
+
+        let entries: [Entry]
+
+        var primaryModelID: String { entries.first?.id ?? "" }
+        var primaryModelName: String { entries.first?.model.model ?? "" }
+        var contextWindow: Int { entries.first?.model.contextWindow ?? 32_768 }
+        var maxOutputTokens: Int { entries.first?.model.maxOutputTokens ?? 4_096 }
+    }
+
     private enum RunMode {
-        case live(client: any LLMClient, registry: ToolRegistry, specs: [ToolSpec])
+        case live(pool: ModelPool, registry: ToolRegistry, specs: [ToolSpec])
         case fallback(reply: String)
     }
 
@@ -218,33 +242,67 @@ public actor AgentLoop {
 
     /// 解析客户端:测试注入 > Ollama > OpenAI 兼容;无 Key 时返回本地回退。
     private func makeRunMode(session: Session) -> RunMode {
-        let client: any LLMClient
+        let (registry, specs) = makeToolRegistry(session: session)
+
+        // 测试注入:单客户端,保持既有测试路径
         if let clientOverride {
-            client = clientOverride
-        } else {
-            let apiKey = (try? keychain.string(forKey: "llm.api_key")) ?? ""
-            if config.llm.provider != "ollama" && apiKey.isEmpty {
-                let lastUser = session.history.last(where: { $0.role == .user })?.content.plainText ?? ""
-                let reply = """
-                [\(session.persona)] 已收到:\(lastUser)
-                当前运行传统 Agent 循环。未配置主模型 API Key,因此使用本地回退回复。
-                """
-                return .fallback(reply: reply)
-            }
-            if config.llm.provider == "ollama" {
-                client = LocalOllamaClient(model: config.llm.model, temperature: config.llm.temperature)
-            } else {
-                client = OpenAICompatibleClient(
-                    baseURL: config.llm.baseURL,
-                    apiKey: apiKey,
-                    model: config.llm.model,
-                    temperature: config.llm.temperature
-                )
-            }
+            let model = ModelConfig(
+                id: "override",
+                provider: "override",
+                model: config.llm.model,
+                contextWindow: config.llm.contextWindow,
+                maxOutputTokens: config.llm.maxOutputTokens,
+                temperature: config.llm.temperature
+            )
+            let pool = ModelPool(entries: [
+                ModelPool.Entry(id: config.llm.model, model: model, client: clientOverride)
+            ])
+            return .live(pool: pool, registry: registry, specs: specs)
         }
 
-        let (registry, specs) = makeToolRegistry(session: session)
-        return .live(client: client, registry: registry, specs: specs)
+        let modelRegistry = ModelRegistry(config: config, keychain: keychain)
+        let candidates: [ResolvedModel]
+        do {
+            candidates = try modelRegistry.agentCandidates()
+        } catch {
+            return .fallback(reply: localFallbackReply(session))
+        }
+        // 没有 Key 且不是 Ollama 的候选跳过;全部跳过则本地回退
+        let usable = candidates.filter { $0.provider.isOllama || !$0.apiKey.isEmpty }
+        guard !usable.isEmpty else {
+            return .fallback(reply: localFallbackReply(session))
+        }
+        let entries = usable.map { resolved in
+            ModelPool.Entry(
+                id: resolved.id,
+                model: resolved.model,
+                client: clientFactory?(resolved) ?? makeClient(for: resolved)
+            )
+        }
+        return .live(pool: ModelPool(entries: entries), registry: registry, specs: specs)
+    }
+
+    private func makeClient(for resolved: ResolvedModel) -> any LLMClient {
+        if resolved.provider.isOllama {
+            return LocalOllamaClient(
+                model: resolved.model.model,
+                temperature: resolved.model.temperature
+            )
+        }
+        return OpenAICompatibleClient(
+            baseURL: resolved.provider.baseURL,
+            apiKey: resolved.apiKey,
+            model: resolved.model.model,
+            temperature: resolved.model.temperature
+        )
+    }
+
+    private func localFallbackReply(_ session: Session) -> String {
+        let lastUser = session.history.last(where: { $0.role == .user })?.content.plainText ?? ""
+        return """
+        [\(session.persona)] 已收到:\(lastUser)
+        当前运行传统 Agent 循环。未配置主模型 API Key,因此使用本地回退回复。
+        """
     }
 
     private func makeToolRegistry(session: Session) -> (ToolRegistry, [ToolSpec]) {
@@ -306,12 +364,13 @@ public actor AgentLoop {
                 reply: reply,
                 memories: session.memories,
                 engine: "local-fallback",
-                trace: []
+                trace: [],
+                activeModel: "local-fallback"
             )
-        case let .live(client, registry, specs):
-            let (reply, traces, engine) = try await runToolLoop(
+        case let .live(pool, registry, specs):
+            let (reply, traces, engine, activeModel) = try await runToolLoop(
                 session: session,
-                client: client,
+                pool: pool,
                 registry: registry,
                 specs: specs,
                 yield: nil
@@ -323,7 +382,8 @@ public actor AgentLoop {
                 reply: reply,
                 memories: session.memories,
                 engine: engine,
-                trace: traces
+                trace: traces,
+                activeModel: activeModel
             )
         }
     }
@@ -377,12 +437,13 @@ public actor AgentLoop {
                 reply: reply,
                 memories: session.memories,
                 engine: "local-fallback",
-                trace: []
+                trace: [],
+                activeModel: "local-fallback"
             )))
-        case let .live(client, registry, specs):
-            let (reply, traces, engine) = try await runToolLoop(
+        case let .live(pool, registry, specs):
+            let (reply, traces, engine, activeModel) = try await runToolLoop(
                 session: session,
-                client: client,
+                pool: pool,
                 registry: registry,
                 specs: specs,
                 yield: yield
@@ -396,7 +457,8 @@ public actor AgentLoop {
                 reply: reply,
                 memories: session.memories,
                 engine: engine,
-                trace: traces
+                trace: traces,
+                activeModel: activeModel
             )))
         }
     }
@@ -406,21 +468,25 @@ public actor AgentLoop {
     /// 模型/工具循环。`yield == nil` 走非流式 `chat`,`yield != nil` 走流式 `stream`。
     private func runToolLoop(
         session: Session,
-        client: any LLMClient,
+        pool: ModelPool,
         registry: ToolRegistry,
         specs: [ToolSpec],
         yield: (@Sendable (AgentStreamEvent) -> Void)?
-    ) async throws -> (reply: String, traces: [ToolTrace], engine: String) {
+    ) async throws -> (reply: String, traces: [ToolTrace], engine: String, activeModel: String) {
+        guard let primary = pool.entries.first else {
+            throw LLMError.invalidResponse
+        }
         let streaming = yield != nil
         var messages: [ChatMessage] = [.text(.system, session.systemPrompt)]
         messages.append(contentsOf: session.history)
         var traces: [ToolTrace] = []
         var lastPlan = session.plan
         var lastContext: SessionContextState?
+        var activeModel = primary.id
         let contextManager = ContextManager(
             store: store,
-            contextWindow: config.llm.contextWindow,
-            maxOutputTokens: config.llm.maxOutputTokens
+            contextWindow: pool.contextWindow,
+            maxOutputTokens: pool.maxOutputTokens
         )
 
         for _ in 0..<max(config.agent.maxRounds, 1) {
@@ -430,8 +496,8 @@ public actor AgentLoop {
                 tools: specs,
                 threadID: session.threadID,
                 persona: session.persona,
-                model: config.llm.model,
-                client: client
+                model: activeModel,
+                client: primary.client
             )
             if prepared.state != lastContext {
                 lastContext = prepared.state
@@ -442,20 +508,25 @@ public actor AgentLoop {
             let text: String
             let toolCalls: [ToolCall]
             if streaming {
-                (text, toolCalls) = try await streamOnce(
-                    client: client,
+                (text, toolCalls, activeModel) = try await streamWithFallback(
+                    pool: pool,
                     messages: requestMessages,
                     specs: specs,
                     yield: yield
                 )
             } else {
-                let response = try await client.chat(messages: requestMessages, tools: specs)
+                let (response, modelID) = try await chatWithFallback(
+                    pool: pool,
+                    messages: requestMessages,
+                    specs: specs
+                )
                 text = response.content
                 toolCalls = response.toolCalls
+                activeModel = modelID
             }
 
             if toolCalls.isEmpty {
-                return (text, traces, streaming ? "tool-stream" : "tool-loop")
+                return (text, traces, streaming ? "tool-stream" : "tool-loop", activeModel)
             }
 
             // 回填 assistant 工具调用消息
@@ -484,31 +555,64 @@ public actor AgentLoop {
 
         let limitText = "工具调用轮次过多,已停止。请把问题拆小后再试。"
         yield?(.limitReached(limitText))
-        return (limitText, traces, "tool-loop-limit")
+        return (limitText, traces, "tool-loop-limit", activeModel)
     }
 
-    /// 单轮流式请求:累积文本增量与工具调用。
-    private func streamOnce(
-        client: any LLMClient,
+    /// 非流式请求:按模型组顺序回退,返回实际成功的模型 id。
+    private func chatWithFallback(
+        pool: ModelPool,
+        messages: [ChatMessage],
+        specs: [ToolSpec]
+    ) async throws -> (response: LLMResponse, modelID: String) {
+        var lastError: Error?
+        for entry in pool.entries {
+            do {
+                let response = try await entry.client.chat(messages: messages, tools: specs)
+                return (response, entry.id)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? LLMError.invalidResponse
+    }
+
+    /// 流式请求:首个增量产出前失败可切换到下一个模型;已产出内容后失败则原样抛出。
+    private func streamWithFallback(
+        pool: ModelPool,
         messages: [ChatMessage],
         specs: [ToolSpec],
         yield: (@Sendable (AgentStreamEvent) -> Void)?
-    ) async throws -> (text: String, toolCalls: [ToolCall]) {
-        var text = ""
-        var toolCalls: [ToolCall] = []
-        for try await chunk in client.stream(messages: messages, tools: specs) {
-            if Task.isCancelled {
+    ) async throws -> (text: String, toolCalls: [ToolCall], modelID: String) {
+        var lastError: Error?
+        for entry in pool.entries {
+            var text = ""
+            var toolCalls: [ToolCall] = []
+            var emitted = false
+            do {
+                for try await chunk in entry.client.stream(messages: messages, tools: specs) {
+                    if Task.isCancelled {
+                        throw CancellationError()
+                    }
+                    text += chunk.delta
+                    if !chunk.delta.isEmpty {
+                        emitted = true
+                        yield?(.chunk(chunk.delta))
+                    }
+                    if let calls = chunk.toolCallAccumulator {
+                        toolCalls = calls
+                    }
+                }
+                return (text, toolCalls, entry.id)
+            } catch is CancellationError {
                 throw CancellationError()
-            }
-            text += chunk.delta
-            if !chunk.delta.isEmpty {
-                yield?(.chunk(chunk.delta))
-            }
-            if let calls = chunk.toolCallAccumulator {
-                toolCalls = calls
+            } catch {
+                if emitted { throw error }
+                lastError = error
             }
         }
-        return (text, toolCalls)
+        throw lastError ?? LLMError.invalidResponse
     }
 
     /// 执行单个工具调用,统一产出轨迹与回填消息。

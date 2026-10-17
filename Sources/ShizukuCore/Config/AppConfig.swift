@@ -88,12 +88,94 @@ public struct AppConfig: Codable, Sendable, Equatable {
 
     public var llm: LLM
     public var agent: Agent
+    /// 多提供商 / 多模型 / 回退组(旧配置为空时由 normalized() 自动迁移)
+    public var providers: [String: ProviderConfig]
+    public var models: [String: ModelConfig]
+    public var modelGroups: [String: ModelGroup]
+    public var defaultModelGroup: String
 
     public static let `default` = AppConfig()
 
-    public init(llm: LLM = .init(), agent: Agent = .init()) {
+    public init(
+        llm: LLM = .init(),
+        agent: Agent = .init(),
+        providers: [String: ProviderConfig] = [:],
+        models: [String: ModelConfig] = [:],
+        modelGroups: [String: ModelGroup] = [:],
+        defaultModelGroup: String = "default"
+    ) {
         self.llm = llm
         self.agent = agent
+        self.providers = providers
+        self.models = models
+        self.modelGroups = modelGroups
+        self.defaultModelGroup = defaultModelGroup
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case llm, agent, providers, models, modelGroups, defaultModelGroup
+    }
+
+    /// 兼容旧配置:新增字段缺失时使用默认值,避免整份配置解码失败。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        llm = try container.decodeIfPresent(LLM.self, forKey: .llm) ?? LLM()
+        agent = try container.decodeIfPresent(Agent.self, forKey: .agent) ?? Agent()
+        providers = try container.decodeIfPresent([String: ProviderConfig].self, forKey: .providers) ?? [:]
+        models = try container.decodeIfPresent([String: ModelConfig].self, forKey: .models) ?? [:]
+        modelGroups = try container.decodeIfPresent([String: ModelGroup].self, forKey: .modelGroups) ?? [:]
+        defaultModelGroup = try container.decodeIfPresent(String.self, forKey: .defaultModelGroup) ?? "default"
+    }
+
+    /// 把旧版单模型配置迁移成 provider/model/group,并补齐缺失的默认值。
+    public func normalized() -> AppConfig {
+        var copy = self
+        if copy.providers.isEmpty {
+            copy.providers = [
+                "default": ProviderConfig(
+                    id: "default",
+                    name: "默认提供商",
+                    type: copy.llm.provider,
+                    baseURL: copy.llm.baseURL,
+                    enabled: true
+                )
+            ]
+        }
+        if copy.models.isEmpty {
+            let providerID = copy.providers.keys.sorted().first ?? "default"
+            copy.models = [
+                "primary": ModelConfig(
+                    id: "primary",
+                    provider: providerID,
+                    model: copy.llm.model,
+                    name: copy.llm.model,
+                    capabilities: ["chat", "tools"],
+                    enabled: true,
+                    contextWindow: copy.llm.contextWindow,
+                    maxOutputTokens: copy.llm.maxOutputTokens,
+                    temperature: copy.llm.temperature
+                )
+            ]
+        }
+        if copy.modelGroups.isEmpty {
+            let modelID = copy.models.keys.sorted().first ?? "primary"
+            copy.modelGroups = [
+                "default": ModelGroup(
+                    id: "default",
+                    name: "默认模型组",
+                    purpose: "agent",
+                    models: [modelID]
+                )
+            ]
+        }
+        if copy.modelGroups[copy.defaultModelGroup] == nil {
+            copy.defaultModelGroup = copy.modelGroups.keys.sorted().first ?? "default"
+        }
+        if let group = copy.modelGroups[copy.defaultModelGroup], group.models.isEmpty {
+            let modelID = copy.models.keys.sorted().first ?? "primary"
+            copy.modelGroups[copy.defaultModelGroup]?.models = [modelID]
+        }
+        return copy
     }
 }
 
@@ -106,6 +188,7 @@ public struct ConfigStore: Sendable {
     }
 
     /// 读取配置;文件不存在或损坏时回退默认值(与原版静默回退行为一致)。
+    /// 旧配置的 provider/model 迁移由调用方 `normalized()` 或 ModelRegistry 完成。
     public func load() -> AppConfig {
         guard let data = try? Data(contentsOf: fileURL),
               let config = try? JSONDecoder().decode(AppConfig.self, from: data)
