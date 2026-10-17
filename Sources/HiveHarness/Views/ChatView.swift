@@ -783,9 +783,6 @@ struct ChatView: View {
                         .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
                 }
                 CometReasoningSlider(effort: reasoningBinding)
-                Text("等级越高,推理越深入;轨道流光、彗尾和环绕粒子随等级增强。")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
         }
         .padding(14)
