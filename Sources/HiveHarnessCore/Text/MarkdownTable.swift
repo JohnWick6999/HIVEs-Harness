@@ -41,13 +41,41 @@ public enum MarkdownTableParser {
         return MarkdownTable(headers: headers, rows: rows)
     }
 
+    /// 按真正的列分隔符切分:反引号代码内的 | 和转义的 \| 都属于单元格内容。
     private static func cells(_ line: String) -> [String] {
         var value = line
         if value.hasPrefix("|") { value.removeFirst() }
         if value.hasSuffix("|") { value.removeLast() }
-        return value
-            .split(separator: "|", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+
+        var result: [String] = []
+        var current = ""
+        var inCode = false
+        var escaped = false
+        for character in value {
+            if escaped {
+                current.append(character == "|" ? "|" : character)
+                escaped = false
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                continue
+            }
+            if character == "`" {
+                inCode.toggle()
+                current.append(character)
+                continue
+            }
+            if character == "|" && !inCode {
+                result.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        if escaped { current.append("\\") }
+        result.append(current.trimmingCharacters(in: .whitespaces))
+        return result
     }
 
     private static func isSeparator(_ cell: String) -> Bool {
