@@ -127,6 +127,19 @@ struct SkillTests {
         }
     }
 
+    @Test("run_skill 记录使用次数并持久化")
+    func skillUsage() throws {
+        let dir = try makeSkillDirectory()
+        _ = try writeSkill(in: dir, folder: "custom", id: "custom-skill")
+        let store = SkillStore(userDirectory: dir)
+        _ = try SkillTools.RunSkillTool(store: store)
+            .run(arguments: ["skill_id": AnyCodable("custom-skill")])
+        #expect(store.load(id: "custom-skill")?.useCount == 1)
+
+        let reloaded = SkillStore(userDirectory: dir)
+        #expect(reloaded.load(id: "custom-skill")?.useCount == 1)
+    }
+
     @Test("技能工具在只读模式下可用")
     func workModeAllowsSkills() {
         #expect(WorkMode.chat.allows(tool: "list_skills"))

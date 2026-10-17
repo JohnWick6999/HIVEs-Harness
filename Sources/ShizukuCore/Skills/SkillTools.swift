@@ -59,6 +59,7 @@ public enum SkillTools {
             if skill.hasHandler {
                 text += "\n\n(该技能包含本地 handler;当前版本只注入指令,不会自动执行脚本。)"
             }
+            store.recordUse(id: skill.id)
             return ToolResult(text: text)
         }
     }

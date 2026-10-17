@@ -110,6 +110,16 @@ public final class SQLiteStore: @unchecked Sendable {
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (id, persona)
             );
+            CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                persona TEXT NOT NULL,
+                status TEXT NOT NULL,
+                model TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                record_json TEXT NOT NULL
+            );
             """)
 
         // 旧库没有 thread_id:补列以便按会话清理聊天记录
@@ -654,6 +664,91 @@ public final class SQLiteStore: @unchecked Sendable {
             "DELETE FROM chat_records WHERE thread_id = ? AND persona = ?",
             [.text(threadID), .text(persona)]
         )
+        _ = try executeLocked(
+            "DELETE FROM runs WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+    }
+
+    // MARK: - 运行日志
+
+    public func saveRun(_ run: RunRecord) throws {
+        let json = try encodeJSON(run)
+        let formatter = ISO8601DateFormatter()
+        let started = formatter.string(from: run.startedAt)
+        let finished = run.finishedAt.map { formatter.string(from: $0) }
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            """
+            INSERT INTO runs(id, thread_id, persona, status, model, started_at, finished_at, record_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                status=excluded.status,
+                finished_at=excluded.finished_at,
+                record_json=excluded.record_json
+            """,
+            [
+                .text(run.id),
+                .text(run.threadID),
+                .text(run.persona),
+                .text(run.status.rawValue),
+                .text(run.model),
+                .text(started),
+                finished.map { SQLiteValue.text($0) } ?? .null,
+                .text(json),
+            ]
+        )
+    }
+
+    public func listRuns(persona: String, limit: Int = 50) throws -> [RunRecord] {
+        try listRuns(
+            query: "SELECT record_json FROM runs WHERE persona = ? ORDER BY started_at DESC LIMIT ?",
+            values: [.text(persona), .integer(Int64(limit))]
+        )
+    }
+
+    public func listRuns(threadID: String, persona: String, limit: Int = 50) throws -> [RunRecord] {
+        try listRuns(
+            query: """
+            SELECT record_json FROM runs
+            WHERE thread_id = ? AND persona = ?
+            ORDER BY started_at DESC LIMIT ?
+            """,
+            values: [.text(threadID), .text(persona), .integer(Int64(limit))]
+        )
+    }
+
+    private func listRuns(query: String, values: [SQLiteValue]) throws -> [RunRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(query, values)
+        let decoder = JSONDecoder()
+        return rows.compactMap { row in
+            guard let data = textValue(row["record_json"] ?? "").data(using: .utf8) else {
+                return nil
+            }
+            return try? decoder.decode(RunRecord.self, from: data)
+        }
+    }
+
+    public func loadRun(id: String) throws -> RunRecord? {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(
+            "SELECT record_json FROM runs WHERE id = ?",
+            [.text(id)]
+        )
+        guard let row = rows.first,
+              let data = textValue(row["record_json"] ?? "").data(using: .utf8)
+        else { return nil }
+        return try? JSONDecoder().decode(RunRecord.self, from: data)
+    }
+
+    public func deleteRun(id: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked("DELETE FROM runs WHERE id = ?", [.text(id)])
     }
 
     // MARK: - 状态

@@ -14,6 +14,14 @@ public struct Skill: Sendable, Equatable, Identifiable {
     public var isBuiltin: Bool
     public var enabled: Bool
     public var hasHandler: Bool
+    /// 使用次数与最近使用时间(来自 `.usage.json`)
+    public var useCount: Int
+    public var lastUsedAt: Date?
+
+    public var isStale: Bool {
+        guard let lastUsedAt else { return false }
+        return Date().timeIntervalSince(lastUsedAt) > 14 * 24 * 60 * 60
+    }
 
     public init(
         id: String,
@@ -26,7 +34,9 @@ public struct Skill: Sendable, Equatable, Identifiable {
         directory: URL? = nil,
         isBuiltin: Bool = false,
         enabled: Bool = true,
-        hasHandler: Bool = false
+        hasHandler: Bool = false,
+        useCount: Int = 0,
+        lastUsedAt: Date? = nil
     ) {
         self.id = id
         self.name = name
@@ -39,6 +49,8 @@ public struct Skill: Sendable, Equatable, Identifiable {
         self.isBuiltin = isBuiltin
         self.enabled = enabled
         self.hasHandler = hasHandler
+        self.useCount = useCount
+        self.lastUsedAt = lastUsedAt
     }
 
     public var catalogLine: String {
@@ -78,6 +90,7 @@ public final class SkillStore: @unchecked Sendable {
     private let builtin: [Skill]
     private var cached: [Skill] = []
     private var disabled: Set<String> = []
+    private var usage: [String: UsageRecord] = [:] 
 
     public init(userDirectory: URL) {
         self.userDirectory = userDirectory.standardizedFileURL
@@ -87,6 +100,7 @@ public final class SkillStore: @unchecked Sendable {
             withIntermediateDirectories: true
         )
         self.disabled = Self.loadDisabled(userDirectory)
+        self.usage = Self.loadUsage(userDirectory)
         reload()
     }
 
@@ -112,16 +126,39 @@ public final class SkillStore: @unchecked Sendable {
         for skill in Self.scan(userDirectory) { merged[skill.id] = skill }
 
         let disabled = Self.loadDisabled(userDirectory)
+        let usage = Self.loadUsage(userDirectory)
         let result = merged.values.map { skill -> Skill in
             var copy = skill
             copy.enabled = skill.enabled && !disabled.contains(skill.id)
+            copy.useCount = usage[skill.id]?.count ?? 0
+            copy.lastUsedAt = usage[skill.id]?.lastUsed
             return copy
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
         lock.withLock {
             cached = result
             self.disabled = disabled
+            self.usage = usage
         }
+    }
+
+    /// 记录一次技能使用(供 run_skill 与 UI 统计)。
+    public func recordUse(id: String) {
+        let snapshot: [String: UsageRecord] = lock.withLock {
+            var next = usage
+            var record = next[id] ?? UsageRecord(count: 0, lastUsed: Date())
+            record.count += 1
+            record.lastUsed = Date()
+            next[id] = record
+            usage = next
+            return next
+        }
+        Self.saveUsage(snapshot, directory: userDirectory)
+        reload()
+    }
+
+    public func usageCount(id: String) -> Int {
+        lock.withLock { usage[id]?.count ?? 0 }
     }
 
     public func setEnabled(_ enabled: Bool, id: String) {
@@ -314,6 +351,29 @@ public final class SkillStore: @unchecked Sendable {
                 hasHandler: false
             )
         }
+    }
+
+    // MARK: - 使用遥测
+
+    private struct UsageRecord: Codable {
+        var count: Int
+        var lastUsed: Date
+    }
+
+    private static func usageURL(_ directory: URL) -> URL {
+        directory.appendingPathComponent(".usage.json")
+    }
+
+    private static func loadUsage(_ directory: URL) -> [String: UsageRecord] {
+        guard let data = try? Data(contentsOf: usageURL(directory)),
+              let records = try? JSONDecoder().decode([String: UsageRecord].self, from: data)
+        else { return [:] }
+        return records
+    }
+
+    private static func saveUsage(_ usage: [String: UsageRecord], directory: URL) {
+        guard let data = try? JSONEncoder().encode(usage) else { return }
+        try? data.write(to: usageURL(directory), options: .atomic)
     }
 
     // MARK: - 停用状态

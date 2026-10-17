@@ -6,6 +6,7 @@ import ShizukuCore
 struct SkillsSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var selected: Skill?
+    @State private var selectedProposal: SkillProposal?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -71,6 +72,10 @@ struct SkillsSettingsView: View {
         .sheet(item: $selected) { skill in
             SkillDetailView(skill: skill)
         }
+        .sheet(item: $selectedProposal) { proposal in
+            SkillProposalDetailView(proposal: proposal)
+                .environment(state)
+        }
     }
 
     private func proposalRow(_ proposal: SkillProposal) -> some View {
@@ -84,14 +89,31 @@ struct SkillsSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                HStack(spacing: 6) {
+                    Text((proposal.action ?? "create") == "patch" ? "更新现有技能" : "新建技能")
+                        .font(.caption2)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.orange.opacity(0.15), in: Capsule())
+                    if let target = proposal.targetID {
+                        Text(target).font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
                 if !proposal.reason.isEmpty {
                     Text("理由: \(proposal.reason)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
                 }
+                if let warnings = proposal.warnings, !warnings.isEmpty {
+                    Text(warnings.joined(separator: " · "))
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                }
             }
             Spacer()
+            Button("查看") { selectedProposal = proposal }
             Button("批准") { state.approveSkillProposal(proposal) }
             Button("拒绝") { state.rejectSkillProposal(proposal) }
         }
@@ -132,6 +154,16 @@ struct SkillsSettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
+                    HStack(spacing: 6) {
+                        if skill.useCount > 0 {
+                            Text("使用 \(skill.useCount) 次")
+                        }
+                        if skill.isStale {
+                            Text("14 天未用").foregroundStyle(.orange)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
             }
@@ -160,6 +192,80 @@ struct SkillsSettingsView: View {
         }
         .padding(10)
         .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+private struct SkillProposalDetailView: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+    let proposal: SkillProposal
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(proposal.name)
+                        .font(.title3.weight(.semibold))
+                    Text((proposal.action ?? "create") == "patch"
+                         ? "更新现有技能 \(proposal.targetID ?? "")"
+                         : "新建技能")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("关闭") { dismiss() }
+            }
+            Text(proposal.description)
+                .font(.callout)
+            if !proposal.reason.isEmpty {
+                Text("理由: \(proposal.reason)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let warnings = proposal.warnings, !warnings.isEmpty {
+                ForEach(warnings, id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            if (proposal.action ?? "create") == "patch",
+               let target = proposal.targetID,
+               let old = state.skills.first(where: { $0.id == target }) {
+                DisclosureGroup("将覆盖的现有技能: \(old.name)") {
+                    ScrollView {
+                        Text(old.body)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 120)
+                }
+                .font(.caption)
+            }
+            Divider()
+            Text("提案正文").font(.caption.weight(.semibold))
+            ScrollView {
+                Text(proposal.body)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack {
+                Spacer()
+                Button("拒绝") {
+                    state.rejectSkillProposal(proposal)
+                    dismiss()
+                }
+                Button("批准并启用") {
+                    state.approveSkillProposal(proposal)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 700, height: 560)
     }
 }
 

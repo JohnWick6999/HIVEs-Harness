@@ -52,7 +52,8 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
 
 func makeAgentFixture(
     responses: [LLMResponse],
-    keychain: any KeychainStoring = KeychainStore(service: "com.shizukuclaw.test.\(UUID().uuidString)")
+    keychain: any KeychainStoring = KeychainStore(service: "com.shizukuclaw.test.\(UUID().uuidString)"),
+    skillCatalog: String = ""
 ) throws -> (loop: AgentLoop, store: SQLiteStore, workspace: URL, mock: MockLLMClient) {
     let ws = FileManager.default.temporaryDirectory
         .appendingPathComponent("shizuku-agent-\(UUID().uuidString)")
@@ -70,7 +71,8 @@ func makeAgentFixture(
         keychain: keychain,
         personas: PersonaStore(),
         workspace: ws,
-        clientOverride: mock
+        clientOverride: mock,
+        skillCatalog: skillCatalog
     )
     return (loop, store, ws, mock)
 }
@@ -264,6 +266,18 @@ struct AgentLoopTests {
         }
         #expect(gotFallback)
         #expect(gotFinished)
+    }
+
+    @Test("技能目录注入系统提示词")
+    func skillCatalogInjection() async throws {
+        let fixture = try makeAgentFixture(
+            responses: [LLMResponse(content: "好")],
+            skillCatalog: "- code-review: 代码审查 — 审查代码"
+        )
+        _ = try await fixture.loop.invoke(message: "你好")
+        let system = fixture.mock.capturedMessages().first?.first?.content.plainText ?? ""
+        #expect(system.contains("[技能]"))
+        #expect(system.contains("code-review"))
     }
 
     @Test("内置人格资源加载")

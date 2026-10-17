@@ -32,8 +32,10 @@ final class AppState {
     var skills: [Skill] = []
     /// 待审技能提案
     var skillProposals: [SkillProposal] = []
-    /// 自动进化冷却
-    private var lastEvolutionAttempt = Date.distantPast
+    /// 当前会话的运行日志
+    var runs: [RunRecord] = []
+    /// 自上次进化以来累计的工具迭代次数(Hermes 风格节流)
+    private var toolIterationsSinceEvolution = 0
     /// 本地 OpenAI 兼容网关
     var gatewayRunning = false
     var gatewayPort: Int?
@@ -141,6 +143,19 @@ final class AppState {
         messages = (try? store.loadMessages(threadID: threadID, persona: selectedPersona)) ?? []
         taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
         contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
+        runs = (try? store.listRuns(
+            threadID: threadID,
+            persona: selectedPersona,
+            limit: 100
+        )) ?? []
+    }
+
+    func loadRuns() {
+        runs = (try? store.listRuns(
+            threadID: threadID,
+            persona: selectedPersona,
+            limit: 100
+        )) ?? []
     }
 
     func selectPersona(_ id: String) {
@@ -400,7 +415,8 @@ final class AppState {
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
             },
-            extraTools: mcpTools + skillTools
+            extraTools: mcpTools + skillTools,
+            skillCatalog: skillCatalogText
         )
         do {
             let result = try await loop.invoke(
@@ -479,7 +495,8 @@ final class AppState {
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
             },
-            extraTools: mcpTools + skillTools
+            extraTools: mcpTools + skillTools,
+            skillCatalog: skillCatalogText
         )
         do {
             for try await event in await loop.stream(
@@ -521,6 +538,11 @@ final class AppState {
                         lastToolTrace = result.trace
                         taskPlan = (try? store.loadTaskPlan(threadID: requestThread, persona: requestPersona)) ?? .empty
                         contextState = (try? store.loadContextState(threadID: requestThread, persona: requestPersona)) ?? .empty
+                        runs = (try? store.listRuns(
+                            threadID: requestThread,
+                            persona: requestPersona,
+                            limit: 100
+                        )) ?? []
                     }
                     maybeEvolve(
                         AgentTrajectory(
@@ -627,6 +649,14 @@ final class AppState {
         ]
     }
 
+    /// 渐进披露:只把 id/name/description 放进 system prompt。
+    private var skillCatalogText: String {
+        skills
+            .filter(\.enabled)
+            .map { "- \($0.id): \($0.name) — \(String($0.description.prefix(80)))" }
+            .joined(separator: "\n")
+    }
+
     func reloadSkills() {
         skillStore.reload()
         skills = skillStore.all()
@@ -661,19 +691,19 @@ final class AppState {
         reloadSkillProposals()
     }
 
-    /// 成功且有多次工具调用的任务,后台反思生成技能提案。
+    /// 每累计 10 次工具迭代触发一次反思生成技能提案(Hermes 风格节流)。
     private func maybeEvolve(_ trajectory: AgentTrajectory, loop: AgentLoop) {
-        guard config.agent.autoEvolveSkills, trajectory.traces.count >= 2 else { return }
-        let now = Date()
-        guard now.timeIntervalSince(lastEvolutionAttempt) > 600 else { return }
-        lastEvolutionAttempt = now
+        guard config.agent.autoEvolveSkills else { return }
+        toolIterationsSinceEvolution += trajectory.traces.count
+        guard toolIterationsSinceEvolution >= 10 else { return }
+        toolIterationsSinceEvolution = 0
 
-        let existing = skills.map(\.id)
+        let existing = skills
         Task { [weak self] in
             guard let self else { return }
             let proposal = await self.skillEvolver.consider(
                 trajectory: trajectory,
-                existingIDs: existing,
+                existingSkills: existing,
                 reflect: { system, user in
                     try await loop.complete(prompt: user, system: system)
                 }
@@ -779,7 +809,8 @@ final class AppState {
             personas: personas,
             workspace: workspace,
             approvalHandler: { _ in .reject },
-            extraTools: mcpTools + skillTools
+            extraTools: mcpTools + skillTools,
+            skillCatalog: skillCatalogText
         )
         do {
             let result = try await loop.invoke(

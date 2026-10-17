@@ -24,7 +24,8 @@
 | 🧰 工作台 | 工作区文件浏览/预览、Git status + diff、Shell(完全控制 + 确认) | ✅ |
 | 🏪 插件市场 | 43 个内置卡片 + GitHub + 魔搭;瀑布流/分页、链接导入、SKILL.md 安装预检(含魔搭 repo/files) | ✅ |
 | 🌐 本地网关 | 127.0.0.1 上的 OpenAI 兼容 `/v1/models` + `/v1/chat/completions`,可选 Bearer Token | ✅ |
-| 🧬 技能自进化 | 成功轨迹 → 反思 → 技能提案;人工批准后进入技能库,自动提炼可开关 | ✅ |
+| 🧬 技能自进化 | 每 10 次工具迭代反思;优先 patch 现有技能;description 60 字/风险扫描/使用计数;人工批准 | ✅ |
+| 🧾 运行日志 | 本地记录模型/工具/审批/压缩事件,时间线回看与 JSON 导出 | ✅ |
 | 🪄 技能系统 | 内置 5 个技能 + 用户 SKILL.md;list_skills / run_skill;启停与详情页 | ✅ |
 | 🔌 MCP 客户端 | JSON-RPC 2.0 over stdio / Streamable HTTP,servers.json,工具以 `mcp__<server>__` 前缀注册,仅完全控制模式可用 | ✅ |
 | 🧩 插件系统 | plugin.json 清单扫描 + 安全策略(网络/执行时限/域名白名单) | ✅ |
@@ -57,6 +58,7 @@
 | `Tools/` | Tool 协议(async)、注册表、SafePath 工作区沙箱、6 个内置工具 + todowrite/todoread |
 | `Agent/` | AgentLoop actor:工具循环、无 Key 回退、checkpoint、自动记忆;TaskPlan 计划;ContextManager 压缩 |
 | `Persona/` | Persona 模型 + 5 内置人格(Bundle 资源,id=文件名) |
+| `Agent/` 运行日志 | RunRecorder/RunRecord,SQLite runs 表,时间线与导出 |
 | `Workbench/` | 工作区文件浏览、Git 变更、Shell(Process + 超时 + 输出上限) |
 | `Marketplace/` | GitHub / ModelScope 目录适配、链接解析、统一卡片、SKILL.md 安装器 |
 | `Gateway/` | HTTP/1.1 解析、OpenAI 兼容路由、NWListener 本地网关 |
@@ -69,7 +71,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,121 项用例覆盖全部核心模块
+- 测试:swift-testing,129 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 
@@ -117,6 +119,7 @@ swift run ShizukuClaw
 | MCP 配置 | `~/Documents/ShizukuClaw/mcp/servers.json` |
 | 用户技能 | `~/Documents/ShizukuClaw/skills/<id>/SKILL.md` |
 | 技能提案 | `~/Documents/ShizukuClaw/skills/_proposals/<id>.json` |
+| 技能用量 | `~/Documents/ShizukuClaw/skills/.usage.json` |
 | API Key | 钥匙串(`com.shizukuclaw.app`,按 `provider.<id>.api_key` 存储) |
 
 ### MCP 配置示例

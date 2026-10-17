@@ -88,6 +88,8 @@ public actor AgentLoop {
     private let clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)?
     /// 额外工具(MCP 适配器等),随内置工具一起注册
     private let extraTools: [any Tool]
+    /// 已启用技能的渐进披露索引(name + description),注入 system prompt
+    private let skillCatalog: String
 
     /// 历史保留条数(对齐原版 40)
     private let historyLimit = 40
@@ -105,7 +107,8 @@ public actor AgentLoop {
         toolsOverride: [any Tool]? = nil,
         approvalHandler: ApprovalHandler? = nil,
         clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)? = nil,
-        extraTools: [any Tool] = []
+        extraTools: [any Tool] = [],
+        skillCatalog: String = ""
     ) {
         self.store = store
         self.config = config
@@ -117,6 +120,7 @@ public actor AgentLoop {
         self.approvalHandler = approvalHandler
         self.clientFactory = clientFactory
         self.extraTools = extraTools
+        self.skillCatalog = skillCatalog
     }
 
     // MARK: - 会话准备
@@ -255,7 +259,8 @@ public actor AgentLoop {
         验证后才标为 completed。中断或失败时保留未完成状态,不要虚报完成;简单问答不需要计划。
 
         [技能]
-        需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先调用 list_skills 查看,再用 run_skill 加载对应指令后执行。\(planSection)
+        需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先查看下方索引,再用 run_skill 加载对应指令后执行。
+        \(skillCatalog.isEmpty ? "当前没有已启用技能。" : skillCatalog)\(planSection)
         """
     }
 
@@ -376,37 +381,68 @@ public actor AgentLoop {
     ) async throws -> AgentResult {
         let session = prepareSession(message: message, persona: persona, threadID: threadID)
         defer { endRun(session) }
+        let recorder = RunRecorder(threadID: session.threadID, persona: session.persona)
+        recorder.add(.started, title: "开始", detail: session.userText)
+        let promptTokens = TokenEstimator.estimate(session.userText)
 
-        switch makeRunMode(session: session) {
-        case .fallback(let reply):
-            persist(session, reply: reply, traces: [])
-            return AgentResult(
-                success: true,
-                persona: session.persona,
-                reply: reply,
-                memories: session.memories,
-                engine: "local-fallback",
-                trace: [],
-                activeModel: "local-fallback"
-            )
-        case let .live(pool, registry, specs):
-            let (reply, traces, engine, activeModel) = try await runToolLoop(
-                session: session,
-                pool: pool,
-                registry: registry,
-                specs: specs,
-                yield: nil
-            )
-            persist(session, reply: reply, traces: traces)
-            return AgentResult(
-                success: true,
-                persona: session.persona,
-                reply: reply,
-                memories: session.memories,
-                engine: engine,
-                trace: traces,
-                activeModel: activeModel
-            )
+        do {
+            switch makeRunMode(session: session) {
+            case .fallback(let reply):
+                recorder.add(.finished, title: "本地回退", detail: reply)
+                persist(session, reply: reply, traces: [])
+                try? store.saveRun(recorder.snapshot(
+                    status: .completed,
+                    model: "local-fallback",
+                    replyPreview: reply,
+                    promptTokens: promptTokens,
+                    completionTokens: TokenEstimator.estimate(reply)
+                ))
+                return AgentResult(
+                    success: true,
+                    persona: session.persona,
+                    reply: reply,
+                    memories: session.memories,
+                    engine: "local-fallback",
+                    trace: [],
+                    activeModel: "local-fallback"
+                )
+            case let .live(pool, registry, specs):
+                let (reply, traces, engine, activeModel) = try await runToolLoop(
+                    session: session,
+                    pool: pool,
+                    registry: registry,
+                    specs: specs,
+                    yield: nil,
+                    recorder: recorder
+                )
+                persist(session, reply: reply, traces: traces)
+                recorder.add(
+                    .finished,
+                    title: "完成",
+                    detail: reply,
+                    metadata: ["engine": engine, "tools": String(traces.count)]
+                )
+                try? store.saveRun(recorder.snapshot(
+                    status: .completed,
+                    model: activeModel,
+                    replyPreview: reply,
+                    promptTokens: promptTokens,
+                    completionTokens: TokenEstimator.estimate(reply)
+                ))
+                return AgentResult(
+                    success: true,
+                    persona: session.persona,
+                    reply: reply,
+                    memories: session.memories,
+                    engine: engine,
+                    trace: traces,
+                    activeModel: activeModel
+                )
+            }
+        } catch {
+            recorder.add(.error, title: "失败", detail: error.localizedDescription, ok: false)
+            try? store.saveRun(recorder.snapshot(status: .failed, model: ""))
+            throw error
         }
     }
 
@@ -443,45 +479,76 @@ public actor AgentLoop {
     ) async throws {
         let session = prepareSession(message: message, persona: persona, threadID: threadID)
         defer { endRun(session) }
+        let recorder = RunRecorder(threadID: session.threadID, persona: session.persona)
+        recorder.add(.started, title: "开始", detail: session.userText)
+        let promptTokens = TokenEstimator.estimate(session.userText)
         if !session.plan.items.isEmpty {
             yield(.planUpdated(session.plan))
         }
 
-        switch makeRunMode(session: session) {
-        case .fallback(let reply):
-            yield(.fallback(reply))
-            persist(session, reply: reply, traces: [])
-            endRun(session)
-            if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
-            yield(.finished(AgentResult(
-                success: true,
-                persona: session.persona,
-                reply: reply,
-                memories: session.memories,
-                engine: "local-fallback",
-                trace: [],
-                activeModel: "local-fallback"
-            )))
-        case let .live(pool, registry, specs):
-            let (reply, traces, engine, activeModel) = try await runToolLoop(
-                session: session,
-                pool: pool,
-                registry: registry,
-                specs: specs,
-                yield: yield
-            )
-            persist(session, reply: reply, traces: traces)
-            endRun(session)
-            if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
-            yield(.finished(AgentResult(
-                success: true,
-                persona: session.persona,
-                reply: reply,
-                memories: session.memories,
-                engine: engine,
-                trace: traces,
-                activeModel: activeModel
-            )))
+        do {
+            switch makeRunMode(session: session) {
+            case .fallback(let reply):
+                yield(.fallback(reply))
+                persist(session, reply: reply, traces: [])
+                endRun(session)
+                recorder.add(.finished, title: "本地回退", detail: reply)
+                try? store.saveRun(recorder.snapshot(
+                    status: .completed,
+                    model: "local-fallback",
+                    replyPreview: reply,
+                    promptTokens: promptTokens,
+                    completionTokens: TokenEstimator.estimate(reply)
+                ))
+                if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
+                yield(.finished(AgentResult(
+                    success: true,
+                    persona: session.persona,
+                    reply: reply,
+                    memories: session.memories,
+                    engine: "local-fallback",
+                    trace: [],
+                    activeModel: "local-fallback"
+                )))
+            case let .live(pool, registry, specs):
+                let (reply, traces, engine, activeModel) = try await runToolLoop(
+                    session: session,
+                    pool: pool,
+                    registry: registry,
+                    specs: specs,
+                    yield: yield,
+                    recorder: recorder
+                )
+                persist(session, reply: reply, traces: traces)
+                endRun(session)
+                recorder.add(
+                    .finished,
+                    title: "完成",
+                    detail: reply,
+                    metadata: ["engine": engine, "tools": String(traces.count)]
+                )
+                try? store.saveRun(recorder.snapshot(
+                    status: .completed,
+                    model: activeModel,
+                    replyPreview: reply,
+                    promptTokens: promptTokens,
+                    completionTokens: TokenEstimator.estimate(reply)
+                ))
+                if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
+                yield(.finished(AgentResult(
+                    success: true,
+                    persona: session.persona,
+                    reply: reply,
+                    memories: session.memories,
+                    engine: engine,
+                    trace: traces,
+                    activeModel: activeModel
+                )))
+            }
+        } catch {
+            recorder.add(.error, title: "失败", detail: error.localizedDescription, ok: false)
+            try? store.saveRun(recorder.snapshot(status: .failed, model: ""))
+            throw error
         }
     }
 
@@ -493,7 +560,8 @@ public actor AgentLoop {
         pool: ModelPool,
         registry: ToolRegistry,
         specs: [ToolSpec],
-        yield: (@Sendable (AgentStreamEvent) -> Void)?
+        yield: (@Sendable (AgentStreamEvent) -> Void)?,
+        recorder: RunRecorder
     ) async throws -> (reply: String, traces: [ToolTrace], engine: String, activeModel: String) {
         guard let primary = pool.entries.first else {
             throw LLMError.invalidResponse
@@ -511,7 +579,7 @@ public actor AgentLoop {
             maxOutputTokens: pool.maxOutputTokens
         )
 
-        for _ in 0..<max(config.agent.maxRounds, 1) {
+        for round in 0..<max(config.agent.maxRounds, 1) {
             // 每次模型调用前检查预算;压缩只影响请求视图,不改动完整历史
             let prepared = try await contextManager.prepare(
                 messages: messages,
@@ -523,9 +591,20 @@ public actor AgentLoop {
             )
             if prepared.state != lastContext {
                 lastContext = prepared.state
+                recorder.add(
+                    .context,
+                    title: "上下文 \(Int(prepared.state.usagePercent))%",
+                    detail: prepared.state.summary,
+                    metadata: [
+                        "tokens": String(prepared.state.estimatedTokens),
+                        "covered": String(prepared.state.coveredCount),
+                        "pruned_tools": String(prepared.state.prunedTools),
+                    ]
+                )
                 yield?(.contextUpdated(prepared.state))
             }
             let requestMessages = prepared.messages
+            let modelStarted = Date()
 
             let text: String
             let toolCalls: [ToolCall]
@@ -546,6 +625,13 @@ public actor AgentLoop {
                 toolCalls = response.toolCalls
                 activeModel = modelID
             }
+            recorder.add(
+                .model,
+                title: activeModel,
+                detail: "第 \(round + 1) 轮",
+                durationMs: Int(Date().timeIntervalSince(modelStarted) * 1000),
+                metadata: ["round": String(round + 1)]
+            )
 
             if toolCalls.isEmpty {
                 return (text, traces, streaming ? "tool-stream" : "tool-loop", activeModel)
@@ -562,7 +648,11 @@ public actor AgentLoop {
 
             // 逐个执行工具
             for call in toolCalls {
-                let (trace, toolMessage) = await execute(call, registry: registry)
+                let (trace, toolMessage) = await execute(
+                    call,
+                    registry: registry,
+                    recorder: recorder
+                )
                 traces.append(trace)
                 yield?(.toolCalled(trace))
                 messages.append(toolMessage)
@@ -570,12 +660,14 @@ public actor AgentLoop {
                 // todowrite 等工具可能改写计划,实时推给 UI
                 if let updated = currentPlan(session), updated != lastPlan {
                     lastPlan = updated
+                    recorder.add(.plan, title: "任务计划", detail: updated.displayText)
                     yield?(.planUpdated(updated))
                 }
             }
         }
 
         let limitText = "工具调用轮次过多,已停止。请把问题拆小后再试。"
+        recorder.add(.error, title: "轮次上限", detail: limitText, ok: false)
         yield?(.limitReached(limitText))
         return (limitText, traces, "tool-loop-limit", activeModel)
     }
@@ -640,27 +732,55 @@ public actor AgentLoop {
     /// 执行单个工具调用,统一产出轨迹与回填消息。
     private func execute(
         _ call: ToolCall,
-        registry: ToolRegistry
+        registry: ToolRegistry,
+        recorder: RunRecorder
     ) async -> (trace: ToolTrace, message: ChatMessage) {
+        let started = Date()
         let mode = config.agent.workMode
+        let argumentText = String(call.arguments.prefix(800))
+
+        func record(_ output: (trace: ToolTrace, message: ChatMessage), ok: Bool) {
+            recorder.add(
+                .tool,
+                title: call.name,
+                detail: output.trace.result,
+                durationMs: Int(Date().timeIntervalSince(started) * 1000),
+                ok: ok,
+                metadata: ["args": argumentText]
+            )
+        }
+
         guard mode.allows(tool: call.name) else {
-            return denied(call, reason: "当前为\(mode.title)模式,不允许执行工具 \(call.name)。")
+            let output = denied(call, reason: "当前为\(mode.title)模式,不允许执行工具 \(call.name)。")
+            record(output, ok: false)
+            return output
         }
         if mode.requiresExecutionApproval, WorkMode.requiresExecutionApproval(for: call.name) {
             let decision = await askApproval(
                 .toolExecution,
-                detail: "\(call.name)\n\(call.arguments.prefix(800))"
+                detail: "\(call.name)\n\(argumentText)"
+            )
+            recorder.add(
+                .approval,
+                title: call.name,
+                detail: "工具执行审批",
+                ok: decision != .reject,
+                metadata: ["decision": decision.rawValue]
             )
             guard decision != .reject else {
-                return denied(call, reason: "用户拒绝执行工具 \(call.name)。")
+                let output = denied(call, reason: "用户拒绝执行工具 \(call.name)。")
+                record(output, ok: false)
+                return output
             }
         }
 
         let arguments = Self.parseArguments(call.arguments)
+        var ok = true
         let result: ToolResult
         do {
             result = try await registry.execute(name: call.name, arguments: arguments)
         } catch {
+            ok = false
             result = ToolResult(text: "工具执行失败: \(error.localizedDescription)")
         }
         let trace = ToolTrace(
@@ -675,7 +795,9 @@ public actor AgentLoop {
             toolCallID: call.id,
             toolName: call.name
         )
-        return (trace, message)
+        let output = (trace, message)
+        record(output, ok: ok)
+        return output
     }
 
     private func denied(_ call: ToolCall, reason: String) -> (trace: ToolTrace, message: ChatMessage) {

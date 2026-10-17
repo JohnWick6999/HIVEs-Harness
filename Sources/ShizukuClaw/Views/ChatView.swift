@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var showSettings = false
     @State private var showMarketplace = false
     @State private var showWorkbench = false
+    @State private var showRunHistory = false
     @State private var planExpanded = true
     @State private var showContext = false
 
@@ -37,6 +38,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showWorkbench) {
             WorkbenchView()
+                .environment(state)
+        }
+        .sheet(isPresented: $showRunHistory) {
+            RunHistoryView()
                 .environment(state)
         }
         .onChange(of: state.pendingDraft) { _, draft in
@@ -98,6 +103,13 @@ struct ChatView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Button {
+                showRunHistory = true
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .help("运行日志")
 
             Button {
                 showWorkbench = true

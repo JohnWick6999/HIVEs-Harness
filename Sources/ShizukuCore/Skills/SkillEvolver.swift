@@ -37,6 +37,12 @@ public struct SkillProposal: Codable, Sendable, Equatable, Identifiable {
     public var sourceThreadID: String
     public var author: String
     public var createdAt: Date
+    /// create / patch
+    public var action: String?
+    /// patch 时的目标技能 id
+    public var targetID: String?
+    /// 静态扫描出的风险提示
+    public var warnings: [String]?
 
     public init(
         id: String,
@@ -47,7 +53,10 @@ public struct SkillProposal: Codable, Sendable, Equatable, Identifiable {
         reason: String = "",
         sourceThreadID: String = "",
         author: String = "Shizuku (evolved)",
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        action: String = "create",
+        targetID: String? = nil,
+        warnings: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -58,6 +67,9 @@ public struct SkillProposal: Codable, Sendable, Equatable, Identifiable {
         self.sourceThreadID = sourceThreadID
         self.author = author
         self.createdAt = createdAt
+        self.action = action
+        self.targetID = targetID
+        self.warnings = warnings
     }
 }
 
@@ -102,35 +114,71 @@ public final class SkillEvolver: @unchecked Sendable {
     /// 分析成功轨迹;没有可复用流程时返回 nil。
     public func consider(
         trajectory: AgentTrajectory,
-        existingIDs: [String],
+        existingSkills: [Skill],
         reflect: @Sendable (_ system: String, _ user: String) async throws -> String
     ) async -> SkillProposal? {
         guard !trajectory.traces.isEmpty else { return nil }
-        let system = Self.systemPrompt
+        let existingIDs = existingSkills.map(\.id)
+        let catalog = existingSkills.prefix(40)
+            .map { "- \($0.id): \($0.name) — \($0.description)" }
+            .joined(separator: "\n")
         let user = Self.transcript(trajectory)
-        guard let raw = try? await reflect(system, user), !raw.isEmpty else { return nil }
-        guard let response = Self.decodeResponse(raw), response.skip != true else { return nil }
-        guard let proposedID = response.id,
+            + "\n\n现有技能(优先 patch,避免重复创建):\n"
+            + (catalog.isEmpty ? "（无）" : catalog)
+
+        guard let raw = try? await reflect(Self.systemPrompt, String(user.prefix(12_000))),
+              !raw.isEmpty,
+              let response = Self.decodeResponse(raw),
+              response.skip != true,
               let name = response.name?.trimmingCharacters(in: .whitespacesAndNewlines),
               let description = response.description?.trimmingCharacters(in: .whitespacesAndNewlines),
               let body = response.body?.trimmingCharacters(in: .whitespacesAndNewlines),
               !name.isEmpty,
               !description.isEmpty,
               body.count >= 40,
-              body.count <= 8_000
+              body.count <= 24_000
         else { return nil }
 
+        if Self.isOneOffName(name) { return nil }
+        let action = (response.action ?? "create").lowercased()
+        let warnings = Self.riskWarnings(body)
+        let tags = Array((response.tags ?? []).prefix(5))
+        let summary = String(description.prefix(60))
+
+        if action == "patch" {
+            guard let target = response.target?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let skill = existingSkills.first(where: { $0.id == target })
+            else { return nil }
+            let proposal = SkillProposal(
+                id: target,
+                name: skill.name,
+                description: summary,
+                tags: tags,
+                body: body,
+                reason: String((response.reason ?? "").prefix(500)),
+                sourceThreadID: trajectory.threadID,
+                action: "patch",
+                targetID: target,
+                warnings: warnings
+            )
+            save(proposal)
+            return proposal
+        }
+
+        guard let proposedID = response.id else { return nil }
         var used = Set(existingIDs)
         used.formUnion(proposals().map(\.id))
         let id = Self.uniqueID(Self.sanitize(proposedID), used: &used)
         let proposal = SkillProposal(
             id: id,
             name: String(name.prefix(80)),
-            description: String(description.prefix(200)),
-            tags: Array((response.tags ?? []).prefix(5)),
+            description: summary,
+            tags: tags,
             body: body,
             reason: String((response.reason ?? "").prefix(500)),
-            sourceThreadID: trajectory.threadID
+            sourceThreadID: trajectory.threadID,
+            action: "create",
+            warnings: warnings
         )
         save(proposal)
         return proposal
@@ -201,13 +249,14 @@ public final class SkillEvolver: @unchecked Sendable {
     static let systemPrompt = """
     你是技能整理器。分析一次成功的 Agent 运行,判断是否存在可复用于未来类似任务的流程。
     只有当流程具有复用价值时才生成技能;一次性事实、闲聊、简单问答返回 {"skip":true,"reason":"..."}。
+    优先级:能扩展现有技能就 patch,只有确实不同才 create;禁止为 PR/issue/错误串/一次性任务建技能。
     严格输出 JSON,不要 Markdown 代码块:
-    {"skip":false,"id":"kebab-case","name":"技能名","description":"一句话说明何时使用","tags":["tag"],"body":"Markdown 步骤","reason":"为什么值得复用"}
+    {"skip":false,"action":"create|patch","target":"现有技能 id(仅 patch)","id":"kebab-case","name":"技能名","description":"不超过 60 字,说明何时触发","tags":["tag"],"body":"Markdown 步骤","reason":"为什么值得复用"}
     要求:
     - id 为 3-40 位小写字母/数字/短横线,例如 file-diff-review
     - body 为 6-20 行可执行步骤,写清输入、工具、验证方式与失败处理
     - 不包含密钥、令牌、用户绝对路径、破坏性命令或未实际发生的步骤
-    - description 说明触发场景,不超过 120 字
+    - description 硬上限 60 字,用于技能索引路由
     """
 
     static func transcript(_ trajectory: AgentTrajectory) -> String {
@@ -228,6 +277,8 @@ public final class SkillEvolver: @unchecked Sendable {
     struct ProposalResponse: Decodable {
         var skip: Bool?
         var reason: String?
+        var action: String?
+        var target: String?
         var id: String?
         var name: String?
         var description: String?
@@ -251,6 +302,25 @@ public final class SkillEvolver: @unchecked Sendable {
         }
         guard let data = text.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(ProposalResponse.self, from: data)
+    }
+
+    // MARK: - 校验辅助
+
+    static func isOneOffName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        if name.contains("#") { return true }
+        if lower.hasPrefix("pr ") || lower.hasPrefix("issue ") { return true }
+        if lower.hasPrefix("fix ") && lower.contains("bug") { return true }
+        return false
+    }
+
+    static func riskWarnings(_ body: String) -> [String] {
+        let patterns = [
+            "rm -rf /", "| sh", "| bash", "~/.ssh", "chmod 777", "base64 -d", "sudo ",
+        ]
+        return patterns
+            .filter { body.localizedCaseInsensitiveContains($0) }
+            .map { "包含高风险命令模式: \($0)" }
     }
 
     // MARK: - ID
