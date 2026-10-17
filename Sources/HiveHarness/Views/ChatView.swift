@@ -44,8 +44,9 @@ struct ChatView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 8)
                 }
-                HStack(spacing: 0) {
-                    let turns = ConversationTurnBuilder.build(state.messages)
+                ZStack(alignment: .leading) {
+                    messageList
+                    let turns = state.conversationTurns
                     if !turns.isEmpty {
                         ConversationRail(turns: turns) { id in
                             scrollRequest = ScrollRequest(
@@ -53,9 +54,9 @@ struct ChatView: View {
                                 nonce: (scrollRequest?.nonce ?? 0) + 1
                             )
                         }
-                        .zIndex(1)
+                        .padding(.leading, 4)
+                        .zIndex(10)
                     }
-                    messageList
                 }
                 if let question = state.pendingQuestion {
                     HiveQuestionCard(
@@ -88,6 +89,9 @@ struct ChatView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: artifactPreview?.id)
+        }
+        .onAppear {
+            NSLog("CHAT_MSG_COUNT \(state.messages.count) ROLES \(state.messages.map(\.role.rawValue).joined(separator: ","))")
         }
         .preferredColorScheme(HiveAppearance(rawValue: appearance)?.colorScheme)
         .sheet(isPresented: $showSettings) {
@@ -514,7 +518,8 @@ struct ChatView: View {
                         .frame(height: 1)
                         .id("bottom")
                 }
-                .padding(.horizontal, 18)
+                .padding(.leading, 56)
+                .padding(.trailing, 18)
                 .padding(.vertical, 14)
                 .scrollTargetLayout()
             }

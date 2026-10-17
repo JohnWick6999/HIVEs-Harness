@@ -239,6 +239,10 @@ final class AppState {
         loadSessions()
     }
 
+    var conversationTurns: [ConversationTurn] {
+        ConversationTurnBuilder.build(messages)
+    }
+
     // MARK: - 会话
 
     /// 载入当前人格的会话列表;旧版 `persona:<id>` 历史会自动登记为“历史会话”。
