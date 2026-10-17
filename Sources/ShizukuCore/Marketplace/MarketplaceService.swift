@@ -17,35 +17,53 @@ public actor MarketplaceService {
         builtin
     }
 
-    public func feed(query: String, source: MarketplaceSource?) async -> MarketplaceResult {
-        let key = "\(source?.rawValue ?? "all")|\(query.lowercased())"
+    public func feed(
+        query: String,
+        source: MarketplaceSource?,
+        page: Int = 1,
+        pageSize: Int = 20
+    ) async -> MarketplaceResult {
+        let key = "\(source?.rawValue ?? "all")|\(query.lowercased())|\(page)|\(pageSize)"
         if let cached = cache[key], Date().timeIntervalSince(cached.date) < 60 {
             return cached.result
         }
 
         var items: [MarketplaceItem] = []
         var errors: [String] = []
+        var hasMore = false
 
-        if source == nil || source == .builtin {
+        if page == 1, source == nil || source == .builtin {
             items.append(contentsOf: filterBuiltin(query))
         }
         if source == nil || source == .github {
             do {
-                items.append(contentsOf: try await github.searchRepositories(query: query))
+                let list = try await github.searchRepositories(
+                    query: query,
+                    page: page,
+                    perPage: pageSize
+                )
+                items.append(contentsOf: list)
+                if list.count >= pageSize { hasMore = true }
             } catch {
                 errors.append("GitHub: \(error.localizedDescription)")
             }
         }
         if source == nil || source == .modelScope {
             do {
-                items.append(contentsOf: try await modelScope.search(query: query))
+                let list = try await modelScope.search(
+                    query: query,
+                    page: page,
+                    pageSize: pageSize
+                )
+                items.append(contentsOf: list)
+                if list.count >= pageSize { hasMore = true }
             } catch {
                 errors.append("魔搭: \(error.localizedDescription)")
             }
         }
 
         let merged = Self.dedupe(items).sorted(by: Self.order)
-        let result = MarketplaceResult(items: merged, errors: errors)
+        let result = MarketplaceResult(items: merged, errors: errors, hasMore: hasMore)
         cache[key] = (Date(), result)
         return result
     }

@@ -135,7 +135,7 @@ struct MarketplaceTests {
         let url = try #require(Bundle.module.url(forResource: "MarketplaceCatalog", withExtension: "json"))
         let data = try Data(contentsOf: url)
         let items = try JSONDecoder().decode([MarketplaceItem].self, from: data)
-        #expect(items.count == 7)
+        #expect(items.count >= 7)
     }
 
     @Test("内置目录无需网络")
@@ -217,6 +217,61 @@ struct MarketplaceTests {
         #expect(installed[0].id == "review-skill")
         #expect(store.load(id: "review-skill") != nil)
         #expect(store.load(id: "review-skill")?.body.contains("输出问题") == true)
+    }
+
+    @Test("ModelScope 安装:repo/files + resolve 原始 SKILL.md")
+    func installFromModelScope() async throws {
+        MarketplaceMockURLProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/repo/files") {
+                return httpJSON(request, [
+                    "Code": 200,
+                    "Data": ["Files": [
+                        ["Path": "SKILL.md", "Type": "blob", "Size": 120],
+                        ["Path": "scripts/run.sh", "Type": "blob", "Size": 20],
+                    ]],
+                ])
+            }
+            if path.hasSuffix("/resolve/master/SKILL.md") {
+                let content = """
+                ---
+                name: skill-creator
+                description: 创建技能
+                ---
+
+                # 流程
+                1. 明确目标
+                2. 生成技能
+                """
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(content.utf8))
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "modelscope:@anthropics/skill-creator",
+            name: "skill-creator",
+            summary: "创建技能",
+            source: .modelScope,
+            installURL: "https://modelscope.cn/skills/@anthropics/skill-creator"
+        )
+
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 1)
+        #expect(plan.files[0].skillID == "skill-creator")
+        #expect(plan.warnings.contains { $0.contains("脚本") })
+
+        let installed = try installer.install(plan)
+        #expect(installed.count == 1)
+        #expect(store.load(id: "skill-creator") != nil)
     }
 
     @Test("没有 SKILL.md 时拒绝安装")

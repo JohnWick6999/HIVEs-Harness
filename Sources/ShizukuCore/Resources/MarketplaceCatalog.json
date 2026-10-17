@@ -7,7 +7,11 @@
     "version": "1.0.0",
     "source": "builtin",
     "kind": "skill",
-    "tags": ["coding", "review", "security"],
+    "tags": [
+      "coding",
+      "review",
+      "security"
+    ],
     "installURL": "builtin://code-review"
   },
   {
@@ -18,7 +22,10 @@
     "version": "1.0.0",
     "source": "builtin",
     "kind": "skill",
-    "tags": ["writing", "summary"],
+    "tags": [
+      "writing",
+      "summary"
+    ],
     "installURL": "builtin://meeting-notes"
   },
   {
@@ -29,7 +36,10 @@
     "version": "1.0.0",
     "source": "builtin",
     "kind": "skill",
-    "tags": ["coding", "git"],
+    "tags": [
+      "coding",
+      "git"
+    ],
     "installURL": "builtin://git-commit"
   },
   {
@@ -40,7 +50,10 @@
     "version": "1.0.0",
     "source": "builtin",
     "kind": "skill",
-    "tags": ["research", "citations"],
+    "tags": [
+      "research",
+      "citations"
+    ],
     "installURL": "builtin://research-brief"
   },
   {
@@ -51,7 +64,10 @@
     "version": "1.0.0",
     "source": "builtin",
     "kind": "skill",
-    "tags": ["data", "quality"],
+    "tags": [
+      "data",
+      "quality"
+    ],
     "installURL": "builtin://data-cleanup"
   },
   {
@@ -61,7 +77,10 @@
     "author": "anthropics",
     "source": "github",
     "kind": "plugin",
-    "tags": ["official", "marketplace"],
+    "tags": [
+      "official",
+      "marketplace"
+    ],
     "license": "MIT",
     "homepage": "https://github.com/anthropics/claude-plugins-official",
     "installURL": "https://github.com/anthropics/claude-plugins-official"
@@ -73,9 +92,623 @@
     "author": "modelcontextprotocol",
     "source": "github",
     "kind": "mcp",
-    "tags": ["mcp", "official"],
+    "tags": [
+      "mcp",
+      "official"
+    ],
     "license": "MIT",
     "homepage": "https://github.com/modelcontextprotocol/servers",
     "installURL": "https://github.com/modelcontextprotocol/servers"
+  },
+  {
+    "id": "modelscope:iic/fun-denoise",
+    "name": "fun-denoise",
+    "summary": "智能音频降噪服务，基于阿里巴巴通义实验室 AI 算法，一键消除背景噪音，还原纯净人声。支持 wav、mp3、aac 等主流格式，适用于录音降噪、语音识别预处理、播客后期制作、会议录音优化等场景。当用户需要音频降噪、去除噪音、音频预处理、提升录音质量时使用。",
+    "author": "iic",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools"
+    ],
+    "downloads": 737,
+    "homepage": "https://modelscope.cn/skills/iic/fun-denoise",
+    "installURL": "https://modelscope.cn/skills/iic/fun-denoise"
+  },
+  {
+    "id": "modelscope:@anthropics/skill-creator",
+    "name": "skill-creator",
+    "summary": "创建新技能，修改和改进现有技能，并衡量技能表现。当用户希望从零开始创建一个技能、更新或优化现有技能、运行评估以测试技能、通过方差分析来基准化技能表现，或者优化技能描述以提高触发准确性时使用。",
+    "author": "@anthropics",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "skill-management",
+      "developer:anthropics",
+      "custom_tag:skill-creation",
+      "custom_tag:skill-discovery"
+    ],
+    "downloads": 20320,
+    "homepage": "https://modelscope.cn/skills/@anthropics/skill-creator",
+    "installURL": "https://modelscope.cn/skills/@anthropics/skill-creator",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/0df6ab15-9f62-43f2-811c-4bcb7ab0525f.png"
+  },
+  {
+    "id": "modelscope:@pskoett/self-improving-agent",
+    "name": "self-improvement",
+    "summary": "记录学习、错误和更正，以实现持续改进。使用场景：(1) 某个命令或操作意外失败，(2) 用户纠正Claude（例如：“不，那是错的...”，“实际上...”），(3) 用户请求一个不存在的功能，(4) 外部API或工具失败，(5) Claude意识到其知识过时或不正确，(6) 发现了重复任务更好的处理方法。在执行重要任务前也应回顾这些学习。",
+    "author": "@pskoett",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "skill-management",
+      "developer:pskoett",
+      "custom_tag:skill-creation",
+      "custom_tag:skill-discovery"
+    ],
+    "downloads": 8998,
+    "homepage": "https://modelscope.cn/skills/@pskoett/self-improving-agent",
+    "installURL": "https://modelscope.cn/skills/@pskoett/self-improving-agent",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/17d42a23b3eb8e547e0031f37db2b65acfd05b2db6b002eef73058fbdd20376f.jpg"
+  },
+  {
+    "id": "modelscope:modelscope/modelscope-studio",
+    "name": "魔搭创空间部署Skill",
+    "summary": "Deploy a local project to a ModelScope Studio. Supports Gradio, Streamlit, Docker, and static website types. Covers creation, code sync, deployment, log monitoring, plaintext/secret variable manage...",
+    "author": "modelscope",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools"
+    ],
+    "downloads": 3635,
+    "homepage": "https://modelscope.cn/skills/modelscope/modelscope-studio",
+    "installURL": "https://modelscope.cn/skills/modelscope/modelscope-studio",
+    "iconURL": "https://resources.modelscope.cn/mcp-server-cover/cd6aabaa-e8b7-455a-bf0a-3519e5e5b323.png"
+  },
+  {
+    "id": "modelscope:baidudrive/baidu-drive",
+    "name": "百度网盘官方skill (baidu-drive)",
+    "summary": "为 OpenClaw 等 AI Agent 打造的百度网盘官方存储与交付能力扩展。通过自然语言交互，让 Agent 获得文件上传、下载、分享、搜索、管理等完整云端操作能力，打通 AI 生成到成果落地的“最后一公里”。 依托百度网盘 10 亿用户的存储底座与开放平台 API，baidu drive skill 为 Agent 装备了“随身记忆”与“云端大脑”——换设备时记忆同步、跨端无缝接续；...",
+    "author": "BaiduDrive",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "cloud-devops",
+      "custom_tag:百度网盘、网盘、文件管理、分享、备份、交付"
+    ],
+    "downloads": 6979,
+    "homepage": "https://modelscope.cn/skills/BaiduDrive/baidu-drive",
+    "installURL": "https://modelscope.cn/skills/BaiduDrive/baidu-drive",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image/a4cd2a28b56e5c2230b9a0a90b73b48a182ab0a96e0a4ece3ed432987b827ac1.png"
+  },
+  {
+    "id": "modelscope:@steipete/summarize",
+    "name": "summarize",
+    "summary": "使用summarize CLI（适用于网页、PDF、图片、音频、YouTube）来总结URL或文件。",
+    "author": "@steipete",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "developer:steipete",
+      "custom_tag:image-video-gen",
+      "custom_tag:media-processing"
+    ],
+    "downloads": 3793,
+    "homepage": "https://modelscope.cn/skills/@steipete/summarize",
+    "installURL": "https://modelscope.cn/skills/@steipete/summarize"
+  },
+  {
+    "id": "modelscope:@amap-web/amap-lbs-skill",
+    "name": "高德地图综合服务Skill",
+    "summary": "高德地图综合服务，支持POI搜索、路径规划、旅游规划、周边搜索和热力图数据可视化",
+    "author": "@AMap-Web",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "license:MIT License",
+      "developer:AMap-Web",
+      "custom_tag:api-design"
+    ],
+    "downloads": 7107,
+    "homepage": "https://modelscope.cn/skills/@AMap-Web/amap-lbs-skill",
+    "installURL": "https://modelscope.cn/skills/@AMap-Web/amap-lbs-skill",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/5f5ade2079216d8c8b4452bb2aab332eda0eb82b6ad4840a299025457fc15d04.png",
+    "license": "MIT License"
+  },
+  {
+    "id": "modelscope:@steipete/github",
+    "name": "github",
+    "summary": "使用`gh` CLI与GitHub进行交互。使用`gh issue`、`gh pr`、`gh run`和`gh api`来处理问题、拉取请求、CI运行和高级查询。",
+    "author": "@steipete",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "developer:steipete",
+      "custom_tag:sdk"
+    ],
+    "downloads": 2609,
+    "homepage": "https://modelscope.cn/skills/@steipete/github",
+    "installURL": "https://modelscope.cn/skills/@steipete/github"
+  },
+  {
+    "id": "modelscope:zhima_credit_tech/zhima-credit-payafteruse-skill",
+    "name": "芝麻先享 Skills",
+    "summary": "芝麻先享智能操作助手，具备 Agent 自主执行能力。通过调用支付宝开放平台 API，可直接完成服务开通、信用下单、扣款退款、订单完结等业务操作，覆盖 9 个核心接口。支持免确认和需确认两种下单模式，适配不同业务场景。提供交互式引导与命令行两种使用方式，自动处理签名、生成二维码、查询协议状态。内置示例报文查询、参数校验、错误码排查等辅助功能，显著降低接入门槛。适用于开发者联调测试、运营快速操...",
+    "author": "zhima_credit_tech",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "license:Apache License 2.0",
+      "custom_tag:先用后付",
+      "custom_tag:芝麻先享"
+    ],
+    "downloads": 1152,
+    "homepage": "https://modelscope.cn/skills/zhima_credit_tech/zhima-credit-payafteruse-skill",
+    "installURL": "https://modelscope.cn/skills/zhima_credit_tech/zhima-credit-payafteruse-skill",
+    "iconURL": "https://resources.modelscope.cn/mcp-server-cover/411a7a14-fa9a-4a4b-8147-f3397a45f929.png",
+    "license": "Apache License 2.0"
+  },
+  {
+    "id": "modelscope:onescience/oneskills",
+    "name": "OneSkills",
+    "summary": "OneSkills 是面向 AI4S 的科研智能体技能库，聚焦科研开发、实验运行与环境交付等关键环节，提供可复用、可组合、可落地的任务执行能力。",
+    "author": "OneScience",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "license:Apache-2.0"
+    ],
+    "downloads": 12733,
+    "homepage": "https://modelscope.cn/skills/OneScience/oneskills",
+    "installURL": "https://modelscope.cn/skills/OneScience/oneskills",
+    "iconURL": "https://resources.modelscope.cn/mcp-server-cover/2729bf70-d6d0-4508-848d-0f4a7bc8385f.png",
+    "license": "Apache-2.0"
+  },
+  {
+    "id": "modelscope:@oswalpalash/ontology",
+    "name": "ontology",
+    "summary": "类型化的知识图谱用于结构化代理记忆和可组合技能。在创建/查询实体（人、项目、任务、事件、文档）、链接相关对象、强制约束条件、将多步骤动作规划为图转换，或者当技能需要共享状态时使用。触发词包括“记住”、“我对...了解什么”、“将X与Y关联”、“显示依赖关系”、实体的增删改查操作或跨技能数据访问。",
+    "author": "@oswalpalash",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "skill-management",
+      "developer:oswalpalash",
+      "custom_tag:skill-creation",
+      "custom_tag:skill-discovery"
+    ],
+    "downloads": 2048,
+    "homepage": "https://modelscope.cn/skills/@oswalpalash/ontology",
+    "installURL": "https://modelscope.cn/skills/@oswalpalash/ontology"
+  },
+  {
+    "id": "modelscope:@halthelobster/proactive-agent",
+    "name": "proactive-agent",
+    "summary": "将AI代理从任务跟随者转变为能够预测需求并持续改进的积极合作伙伴。现在采用WAL协议，工作缓冲区以保持上下文，压缩恢复以及经过实战检验的安全模式。这是Hal Stack的一部分 🦞",
+    "author": "@halthelobster",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "developer:halthelobster",
+      "custom_tag:ai-automation"
+    ],
+    "downloads": 1080,
+    "homepage": "https://modelscope.cn/skills/@halthelobster/proactive-agent",
+    "installURL": "https://modelscope.cn/skills/@halthelobster/proactive-agent",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/cbb789e45f4250765ccf86976195e606ca3304697cdd1027fa446dfc93b68f09.png"
+  },
+  {
+    "id": "modelscope:@steipete/weather",
+    "name": "weather天气查询",
+    "summary": "获取当前天气和预报（不需要API密钥）",
+    "author": "@steipete",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "developer:steipete",
+      "custom_tag:media-processing"
+    ],
+    "downloads": 5741,
+    "homepage": "https://modelscope.cn/skills/@steipete/weather",
+    "installURL": "https://modelscope.cn/skills/@steipete/weather"
+  },
+  {
+    "id": "modelscope:@spclaudehome/skill-vetter",
+    "name": "Skill Vetter 安全扫描",
+    "summary": "以安全为先的AI代理技能审核。在从ClawdHub、GitHub或其他来源安装任何技能之前使用。检查危险信号、权限范围和可疑模式。",
+    "author": "@spclaudehome",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "code-quality-testing",
+      "developer:spclaudehome",
+      "custom_tag:code-review"
+    ],
+    "downloads": 3741,
+    "homepage": "https://modelscope.cn/skills/@spclaudehome/skill-vetter",
+    "installURL": "https://modelscope.cn/skills/@spclaudehome/skill-vetter"
+  },
+  {
+    "id": "modelscope:@ivangdavila/self-improving",
+    "name": "Self-Improving + Proactive Agent",
+    "summary": "自我反思 + 自我批评 + 自我学习 + 自我组织记忆。代理评估自己的工作，发现错误，并永久改进。在以下情况下使用：(1) 命令、工具、API或操作失败；(2) 用户纠正你或拒绝你的工作；(3) 你意识到自己的知识已经过时或不正确；(4) 你发现了更好的方法；(5) 用户明确安装或引用了当前任务所需的技能。",
+    "author": "@ivangdavila",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-automation",
+      "developer:ivangdavila",
+      "custom_tag:ai-automation"
+    ],
+    "downloads": 9129,
+    "homepage": "https://modelscope.cn/skills/@ivangdavila/self-improving",
+    "installURL": "https://modelscope.cn/skills/@ivangdavila/self-improving"
+  },
+  {
+    "id": "modelscope:@vercel-labs/find-skills",
+    "name": "find-skills",
+    "summary": "帮助用户在询问诸如“我如何做X”、“寻找X的技能”、“是否有可以...的技能”，或表示有兴趣扩展功能时，发现并安装代理技能。当用户正在寻找可能作为可安装技能存在的功能时，应使用此技能。",
+    "author": "@vercel-labs",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "skill-management",
+      "developer:vercel-labs",
+      "custom_tag:skill-discovery"
+    ],
+    "downloads": 9534,
+    "homepage": "https://modelscope.cn/skills/@vercel-labs/find-skills",
+    "installURL": "https://modelscope.cn/skills/@vercel-labs/find-skills",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/691c82e3-4f98-4278-ba54-b3647c1b4d19.png"
+  },
+  {
+    "id": "modelscope:@anthropics/frontend-design",
+    "name": "frontend-design",
+    "summary": "创建具有高设计质量的独特、生产级前端界面。当用户要求构建Web组件、页面或应用程序时使用此技能。生成富有创意且精致的代码，避免通用的人工智能美学。",
+    "author": "@anthropics",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "frontend-development",
+      "developer:anthropics",
+      "custom_tag:ui-ux-design",
+      "custom_tag:frontend-frameworks"
+    ],
+    "downloads": 15921,
+    "homepage": "https://modelscope.cn/skills/@anthropics/frontend-design",
+    "installURL": "https://modelscope.cn/skills/@anthropics/frontend-design",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/0df6ab15-9f62-43f2-811c-4bcb7ab0525f.png"
+  },
+  {
+    "id": "modelscope:@inference-sh/web-search",
+    "name": "web-search 网页搜索",
+    "summary": "通过inference.sh CLI使用Tavily和Exa进行网页搜索与内容提取。应用：Tavily搜索、Tavily提取、Exa搜索、Exa回答、Exa提取。功能：AI驱动的搜索、内容提取、直接答案提供、研究。用途：研究、RAG管道、事实核查、内容聚合、代理。触发条件：网页搜索、tavily、exa、搜索API、内容提取、研究、互联网搜索、AI搜索、搜索助手、网络爬取、RAG、perpl...",
+    "author": "@inference-sh",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "custom_tag:image-video-gen",
+      "custom_tag:ai-automation",
+      "custom_tag:media-processing"
+    ],
+    "downloads": 4328,
+    "homepage": "https://modelscope.cn/skills/@inference-sh/web-search",
+    "installURL": "https://modelscope.cn/skills/@inference-sh/web-search",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/527040cd-bd80-4e18-81c9-0cd6a32c2148.png"
+  },
+  {
+    "id": "modelscope:@work-fisher/storyboard-storytelling-pipeline",
+    "name": "storyboard-storytelling-pipeline",
+    "summary": "从剧本到成稿指导，构建、修复或延续完整的分镜工作流程。当用户希望采用以故事为先的分镜方法，并基于 FloobyNooby 风格进行规划、清晰表达、场面调度、镜头推进、有动机的剪辑、连贯性、粗略缩略图、动态分镜审阅、结构修订、关键画板、完整粗稿及成稿规范时使用此技能，而非侧重分析的镜头清单。",
+    "author": "@Work-Fisher",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media"
+    ],
+    "downloads": 2150,
+    "homepage": "https://modelscope.cn/skills/@Work-Fisher/storyboard-storytelling-pipeline",
+    "installURL": "https://modelscope.cn/skills/@Work-Fisher/storyboard-storytelling-pipeline"
+  },
+  {
+    "id": "modelscope:@steipete/gog",
+    "name": "Gog 谷歌全家桶CLI工具",
+    "summary": "用于Gmail、日历、云端硬盘、联系人、表格和文档的Google Workspace命令行界面。",
+    "author": "@steipete",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "developer:steipete",
+      "custom_tag:doc-processing",
+      "custom_tag:api-design"
+    ],
+    "downloads": 644,
+    "homepage": "https://modelscope.cn/skills/@steipete/gog",
+    "installURL": "https://modelscope.cn/skills/@steipete/gog"
+  },
+  {
+    "id": "modelscope:@vercel-labs/react-best-practices",
+    "name": "vercel-react-best-practices",
+    "summary": "来自Vercel工程团队的React和Next.js性能优化指南。在编写、审查或重构React/Next.js代码时应使用此技能，以确保采用最佳性能模式。当任务涉及React组件、Next.js页面、数据获取、包优化或性能改进时触发。",
+    "author": "@vercel-labs",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "frontend-development",
+      "developer:vercel-labs",
+      "custom_tag:frontend-frameworks"
+    ],
+    "downloads": 1589,
+    "homepage": "https://modelscope.cn/skills/@vercel-labs/react-best-practices",
+    "installURL": "https://modelscope.cn/skills/@vercel-labs/react-best-practices",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/691c82e3-4f98-4278-ba54-b3647c1b4d19.png"
+  },
+  {
+    "id": "modelscope:@1panel-dev/1panel-skills",
+    "name": "openclaw-1panel",
+    "summary": "用于OpenClaw的一面板操作技巧。当用户希望OpenClaw与一个一面板实例进行交互，以监控资源、网站、证书、应用程序状态、容器状态、日志、定时任务、任务中心记录、节点管理状态以及未来的管理动作时使用。当前实现主要集中在查询和检查接口上，并保留了按模块分组的变更定义以便于后续扩展。",
+    "author": "@1Panel-dev",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "cloud-devops",
+      "license:GNU General Public License v3.0",
+      "developer:1Panel-dev",
+      "custom_tag:monitoring"
+    ],
+    "downloads": 1081,
+    "homepage": "https://modelscope.cn/skills/@1Panel-dev/1Panel-skills",
+    "installURL": "https://modelscope.cn/skills/@1Panel-dev/1Panel-skills",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/3c5651748fbc1e10867c90cfa45754f31d5833ade0b9175d95a8310f83356003.jpg",
+    "license": "GNU General Public License v3.0"
+  },
+  {
+    "id": "modelscope:@vercel-labs/composition-patterns",
+    "name": "vercel-composition-patterns",
+    "summary": "可扩展的React组合模式。当重构具有布尔属性扩散的组件、构建灵活的组件库或设计可重用API时使用。在涉及复合组件、渲染属性、上下文提供者或组件架构的任务中触发。包括React 19 API更改。",
+    "author": "@vercel-labs",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "frontend-development",
+      "developer:vercel-labs",
+      "custom_tag:frontend-frameworks",
+      "custom_tag:component-arch"
+    ],
+    "downloads": 542,
+    "homepage": "https://modelscope.cn/skills/@vercel-labs/composition-patterns",
+    "installURL": "https://modelscope.cn/skills/@vercel-labs/composition-patterns",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/691c82e3-4f98-4278-ba54-b3647c1b4d19.png"
+  },
+  {
+    "id": "modelscope:@vercel-labs/web-design-guidelines",
+    "name": "web-design-guidelines",
+    "summary": "审查UI代码是否符合Web界面指南。当被要求“审查我的UI”、“检查可访问性”、“审核设计”、“审查UX”或“根据最佳实践检查我的网站”时使用。",
+    "author": "@vercel-labs",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "code-quality-testing",
+      "developer:vercel-labs",
+      "custom_tag:code-review"
+    ],
+    "downloads": 1118,
+    "homepage": "https://modelscope.cn/skills/@vercel-labs/web-design-guidelines",
+    "installURL": "https://modelscope.cn/skills/@vercel-labs/web-design-guidelines",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/691c82e3-4f98-4278-ba54-b3647c1b4d19.png"
+  },
+  {
+    "id": "modelscope:@anthropics/canvas-design",
+    "name": "canvas-design",
+    "summary": "使用设计哲学创建美观的视觉艺术作品，格式为.png和.pdf文档。当用户要求创建海报、艺术品、设计或其他静态作品时，你应该使用此技能。创作原创的视觉设计，切勿复制现有艺术家的作品以避免侵犯版权。",
+    "author": "@anthropics",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "developer:anthropics",
+      "custom_tag:image-video-gen"
+    ],
+    "downloads": 2432,
+    "homepage": "https://modelscope.cn/skills/@anthropics/canvas-design",
+    "installURL": "https://modelscope.cn/skills/@anthropics/canvas-design",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/0df6ab15-9f62-43f2-811c-4bcb7ab0525f.png"
+  },
+  {
+    "id": "modelscope:@jimliu/baoyu-cover-image",
+    "name": "baoyu-cover-image",
+    "summary": "生成具有5个维度（类型、调色板、渲染、文本、情绪）的文章封面图片，结合10种调色板和7种渲染风格。支持电影级（2.35:1）、宽屏（16:9）和方形（1:1）比例。当用户要求“生成封面图片”、“创建文章封面”或“制作封面”时使用。",
+    "author": "@jimliu",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "custom_tag:image-video-gen"
+    ],
+    "downloads": 1587,
+    "homepage": "https://modelscope.cn/skills/@jimliu/baoyu-cover-image",
+    "installURL": "https://modelscope.cn/skills/@jimliu/baoyu-cover-image"
+  },
+  {
+    "id": "modelscope:@coreyhaines31/copywriting",
+    "name": "copywriting",
+    "summary": "当用户想要为任何页面撰写、重写或改进营销文案时，包括首页、着陆页、价格页、功能页、关于我们页面或产品页。此外，当用户说“为这个撰写文案”、“改进这段文案”、“重写这一页”、“营销文案”、“标题帮助”、“行动号召文案”、“价值主张”、“标语”、“副标题”、“英雄区文案”、“首屏内容”、“这段文案很弱”、“让这段更有吸引力”或“帮我描述我的产品”。每当有人在处理需要说服或转化的网站文本时，请使用...",
+    "author": "@coreyhaines31",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "marketing-seo",
+      "license:MIT License",
+      "developer:coreyhaines31",
+      "custom_tag:content-strategy"
+    ],
+    "downloads": 976,
+    "homepage": "https://modelscope.cn/skills/@coreyhaines31/copywriting",
+    "installURL": "https://modelscope.cn/skills/@coreyhaines31/copywriting",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/919d0e5dc88a4017bed5ff213d1d7605566e23c6fb9210c7e979b51e33b307ee.jpg",
+    "license": "MIT License"
+  },
+  {
+    "id": "modelscope:@anthropics/docx",
+    "name": "docx",
+    "summary": "当用户想要创建、阅读、编辑或操作Word文档（.docx文件）时，请使用此技能。触发条件包括：任何提到'Word doc'、'word document'、'.docx'，或者请求生成带有目录、标题、页码或信头等格式的专业文档。此外，在从.docx文件中提取或重新组织内容、在文档中插入或替换图片、在Word文件中执行查找和替换、处理跟踪更改或注释、或将内容转换为精美的Word文档时也应使用此...",
+    "author": "@anthropics",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "developer:anthropics",
+      "custom_tag:doc-processing"
+    ],
+    "downloads": 10336,
+    "homepage": "https://modelscope.cn/skills/@anthropics/docx",
+    "installURL": "https://modelscope.cn/skills/@anthropics/docx",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/0df6ab15-9f62-43f2-811c-4bcb7ab0525f.png"
+  },
+  {
+    "id": "modelscope:@anthropics/pdf",
+    "name": "pdf",
+    "summary": "每当用户想要对PDF文件进行任何操作时，请使用此技能。这包括从PDF中读取或提取文本/表格、将多个PDF合并为一个、拆分PDF、旋转页面、添加水印、创建新的PDF、填写PDF表单、加密/解密PDF、提取图像以及对扫描的PDF进行OCR处理以使其可搜索。如果用户提到.pdf文件或要求生成一个，请使用此技能。",
+    "author": "@anthropics",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "developer:anthropics",
+      "custom_tag:doc-processing"
+    ],
+    "downloads": 5967,
+    "homepage": "https://modelscope.cn/skills/@anthropics/pdf",
+    "installURL": "https://modelscope.cn/skills/@anthropics/pdf",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/0df6ab15-9f62-43f2-811c-4bcb7ab0525f.png"
+  },
+  {
+    "id": "modelscope:@anthropics/xlsx",
+    "name": "xlsx",
+    "summary": "在任何电子表格文件作为主要输入或输出时使用此技能。这意味着用户希望执行以下任务中的任何一个：打开、读取、编辑或修复现有的.xlsx、.xlsm、.csv或.tsv文件（例如，添加列、计算公式、格式化、制图、清理混乱的数据）；从头开始或从其他数据源创建新的电子表格；或将表格文件格式之间进行转换。当用户通过名称或路径引用电子表格文件时特别触发——即使是很随意地提到（如“下载文件夹中的xlsx”）...",
+    "author": "@anthropics",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "custom_tag:doc-processing"
+    ],
+    "downloads": 4147,
+    "homepage": "https://modelscope.cn/skills/@anthropics/xlsx",
+    "installURL": "https://modelscope.cn/skills/@anthropics/xlsx",
+    "iconURL": "https://resources.modelscope.cn/skill-cover/0df6ab15-9f62-43f2-811c-4bcb7ab0525f.png"
+  },
+  {
+    "id": "modelscope:@obra/writing-plans",
+    "name": "writing-plans",
+    "summary": "在你有一个多步骤任务的规范或需求时使用，这要在接触代码之前",
+    "author": "@obra",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "license:MIT License",
+      "developer:obra",
+      "custom_tag:doc-processing"
+    ],
+    "downloads": 1272,
+    "homepage": "https://modelscope.cn/skills/@obra/writing-plans",
+    "installURL": "https://modelscope.cn/skills/@obra/writing-plans",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/8529489867fc9d1aa9046ccdc477611447f9e7c1763127931a4c9ff91d1d5f6a.jpg",
+    "license": "MIT License"
+  },
+  {
+    "id": "modelscope:@github/prd",
+    "name": "PRD需求文档撰写",
+    "summary": "为软件系统和人工智能功能生成高质量的产品需求文档（PRD）。包括执行摘要、用户故事、技术规格说明和风险分析。",
+    "author": "@github",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "license:MIT License",
+      "developer:github",
+      "custom_tag:doc-processing"
+    ],
+    "downloads": 3878,
+    "homepage": "https://modelscope.cn/skills/@github/prd",
+    "installURL": "https://modelscope.cn/skills/@github/prd",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/2fc54e58647e3a65bea4d7a3f7605fe51533546b3aa6dfd9a4933a708268c54e.png",
+    "license": "MIT License"
+  },
+  {
+    "id": "modelscope:@github/chrome-devtools",
+    "name": "chrome-devtools",
+    "summary": "使用Chrome DevTools MCP进行专家级的浏览器自动化、调试和性能分析。可用于与网页交互、截取屏幕截图、分析网络流量以及性能剖析。",
+    "author": "@github",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "code-quality-testing",
+      "custom_tag:debugging",
+      "custom_tag:testing"
+    ],
+    "downloads": 1162,
+    "homepage": "https://modelscope.cn/skills/@github/chrome-devtools",
+    "installURL": "https://modelscope.cn/skills/@github/chrome-devtools"
+  },
+  {
+    "id": "modelscope:@kowl64/n8n-workflow-automation",
+    "name": "n8n工作流自动化",
+    "summary": "设计并输出具有强大触发器、幂等性、错误处理、日志记录、重试机制以及人工审查队列的n8n工作流JSON。当您需要一个不会无声失败且可审计的自动化流程时，请使用此功能。",
+    "author": "@KOwl64",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "developer-tools",
+      "developer:KOwl64",
+      "custom_tag:general-tools"
+    ],
+    "downloads": 686,
+    "homepage": "https://modelscope.cn/skills/@KOwl64/n8n-workflow-automation",
+    "installURL": "https://modelscope.cn/skills/@KOwl64/n8n-workflow-automation"
+  },
+  {
+    "id": "modelscope:@remotion-dev/remotion",
+    "name": "remotion-best-practices",
+    "summary": "Remotion - React视频创建的最佳实践",
+    "author": "@remotion-dev",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "developer:remotion-dev",
+      "custom_tag:image-video-gen",
+      "custom_tag:media-processing"
+    ],
+    "downloads": 2118,
+    "homepage": "https://modelscope.cn/skills/@remotion-dev/remotion",
+    "installURL": "https://modelscope.cn/skills/@remotion-dev/remotion",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image-pre/5a5214fec9682ed83897518fd5f3d54c2216308fa124d17f25a7d8b553643e8a.png"
+  },
+  {
+    "id": "modelscope:@minimax-ai/h3-prompt-writing",
+    "name": "h3-prompt-writing",
+    "summary": "为T2VA、I2VA、FL2VA、L2VA和Ref2VA编写MiniMax H3视频生成提示。在将多模态请求重写为H3提示结构时使用，包括组成综合多模态描述、整体音景和非剧情音乐，对齐关键帧，或为图像、视频和音频定义参考标签。",
+    "author": "@MiniMax-AI",
+    "source": "modelScope",
+    "kind": "skill",
+    "tags": [
+      "ai-media",
+      "developer:MiniMax-AI"
+    ],
+    "downloads": 5998,
+    "homepage": "https://modelscope.cn/skills/@MiniMax-AI/h3-prompt-writing",
+    "installURL": "https://modelscope.cn/skills/@MiniMax-AI/h3-prompt-writing",
+    "iconURL": "https://resouces.modelscope.cn/proxy-image/f0dcdb4775435f0828376412ebd8c266de0b4de3478a5c5050ed1f6b4b1c4799.jpg"
   }
 ]

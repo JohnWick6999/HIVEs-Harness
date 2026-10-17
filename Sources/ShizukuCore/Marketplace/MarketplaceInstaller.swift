@@ -41,6 +41,7 @@ public struct MarketplaceInstallPlan: Sendable, Equatable {
 /// 市场安装器:首版只安装 SKILL.md,不执行仓库里的脚本/hook。
 public struct MarketplaceInstaller: Sendable {
     private let github: GitHubMarketplaceClient
+    private let modelScope: ModelScopeMarketplaceClient
     private let skillStore: SkillStore
 
     public init(
@@ -49,6 +50,7 @@ public struct MarketplaceInstaller: Sendable {
         skillStore: SkillStore
     ) {
         self.github = GitHubMarketplaceClient(session: session, token: githubToken)
+        self.modelScope = ModelScopeMarketplaceClient(session: session)
         self.skillStore = skillStore
     }
 
@@ -62,6 +64,9 @@ public struct MarketplaceInstaller: Sendable {
         }
         if item.kind == .mcp {
             throw MarketplaceError.invalidPackage("MCP 服务器安装将在下一版支持;请先通过设置 → MCP 手动添加。")
+        }
+        if item.source == .modelScope {
+            return try await planModelScope(item)
         }
 
         guard let target = githubTarget(for: item) else {
@@ -174,6 +179,82 @@ public struct MarketplaceInstaller: Sendable {
             installed.append(try skillStore.install(from: directory))
         }
         return installed
+    }
+
+    // MARK: - ModelScope
+
+    private func planModelScope(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
+        let rawID: String
+        if item.id.hasPrefix("modelscope:") {
+            rawID = String(item.id.dropFirst("modelscope:".count))
+        } else if let url = item.installURL,
+                  case let .modelScopeSkill(owner, name) = MarketplaceLinkParser.parse(url) {
+            rawID = "\(owner)/\(name)"
+        } else {
+            throw MarketplaceError.invalidPackage("ModelScope 技能 id 缺失")
+        }
+        guard !rawID.isEmpty else {
+            throw MarketplaceError.invalidPackage("ModelScope 技能 id 缺失")
+        }
+
+        let files = try await modelScope.files(id: rawID)
+        let candidates = files.filter {
+            $0.type != "tree"
+                && $0.path.hasSuffix("SKILL.md")
+                && !$0.path.contains("..")
+                && !$0.path.hasPrefix("/")
+        }
+        guard !candidates.isEmpty else {
+            throw MarketplaceError.noInstallableSkill
+        }
+
+        var warnings: [String] = []
+        if candidates.count > 12 {
+            warnings.append("仓库包含 \(candidates.count) 个技能,首版只安装前 12 个。")
+        }
+        let risky = files.contains {
+            $0.path.hasSuffix(".sh")
+                || $0.path.hasSuffix(".py")
+                || $0.path.contains("scripts/")
+                || $0.path.contains("hooks/")
+        }
+        if risky {
+            warnings.append("仓库包含脚本;首版只安装 SKILL.md,不会执行脚本。")
+        }
+
+        var installFiles: [MarketplaceInstallFile] = []
+        var usedIDs = Set<String>()
+        let folderFallback = rawID.split(separator: "/").last.map(String.init) ?? "skill"
+        for entry in candidates.prefix(12) {
+            if entry.size > 512_000 {
+                warnings.append("跳过过大文件: \(entry.path)")
+                continue
+            }
+            let content = try await modelScope.rawFile(id: rawID, path: entry.path)
+            guard !content.isEmpty, content.utf8.count <= 512_000 else {
+                warnings.append("跳过空或超大内容: \(entry.path)")
+                continue
+            }
+            let meta = SkillStore.parseFrontmatter(content).meta
+            let declared = (meta["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let parent = URL(fileURLWithPath: entry.path).deletingLastPathComponent().lastPathComponent
+            let base = declared.isEmpty
+                ? (entry.path == "SKILL.md" ? folderFallback : parent)
+                : declared
+            let id = Self.uniqueID(Self.sanitize(base), used: &usedIDs)
+            installFiles.append(
+                MarketplaceInstallFile(skillID: id, path: entry.path, content: content)
+            )
+        }
+        guard !installFiles.isEmpty else { throw MarketplaceError.noInstallableSkill }
+        let existing = Set(skillStore.all().map(\.id))
+        return MarketplaceInstallPlan(
+            item: item,
+            files: installFiles,
+            warnings: warnings,
+            overwriting: installFiles.map(\.skillID).filter { existing.contains($0) },
+            ref: "master"
+        )
     }
 
     // MARK: - 辅助

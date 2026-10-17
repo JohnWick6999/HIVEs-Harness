@@ -1,5 +1,17 @@
 import Foundation
 
+public struct ModelScopeFile: Sendable, Equatable {
+    public var path: String
+    public var type: String
+    public var size: Int
+
+    public init(path: String, type: String, size: Int) {
+        self.path = path
+        self.type = type
+        self.size = size
+    }
+}
+
 /// ModelScope(魔搭)技能市场客户端。
 /// 使用其 JSON OpenAPI `/openapi/v1/skills`(支持 search / page_size)。
 public struct ModelScopeMarketplaceClient: Sendable {
@@ -25,11 +37,55 @@ public struct ModelScopeMarketplaceClient: Sendable {
         }
         components.queryItems = items
 
-        var request = URLRequest(url: components.url!)
-        request.timeoutInterval = 25
+        let data = try await get(components.url!)
+        return Self.parseItems(data)
+    }
+
+    /// 读取技能仓库文件列表。
+    public func files(id: String) async throws -> [ModelScopeFile] {
+        let encodedID = Self.encodedPath(id)
+        let url = URL(string: "https://modelscope.cn/api/v1/skills/\(encodedID)/repo/files?Revision=master&Recursive=true")!
+        let data = try await get(url)
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = root["Data"] as? [String: Any],
+              let files = payload["Files"] as? [[String: Any]]
+        else { return [] }
+        return files.compactMap { raw in
+            guard let path = raw["Path"] as? String,
+                  !path.isEmpty
+            else { return nil }
+            return ModelScopeFile(
+                path: path,
+                type: raw["Type"] as? String ?? "blob",
+                size: raw["Size"] as? Int ?? 0
+            )
+        }
+    }
+
+    /// 读取技能仓库原始文件(优先 resolve 直链,失败后回退 repo/raw JSON)。
+    public func rawFile(id: String, path: String) async throws -> String {
+        let encodedID = Self.encodedPath(id)
+        let encodedFile = Self.encodedPath(path)
+        let direct = URL(string: "https://modelscope.cn/api/v1/skills/\(encodedID)/resolve/master/\(encodedFile)")!
+        if let data = try? await get(direct),
+           let text = String(data: data, encoding: .utf8),
+           !text.hasPrefix("{\"Code\"") {
+            return text
+        }
+        let fallback = URL(string: "https://modelscope.cn/api/v1/skills/\(encodedID)/repo/raw?Revision=master&FilePath=\(encodedFile)")!
+        let data = try await get(fallback)
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = root["Data"] as? [String: Any],
+              let content = payload["Content"] as? String
+        else { return "" }
+        return content
+    }
+
+    private func get(_ url: URL) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
         request.setValue("ShizukuClaw/0.1 (macOS Agent)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw MarketplaceError.http(0, "非 HTTP 响应")
@@ -37,8 +93,17 @@ public struct ModelScopeMarketplaceClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             throw MarketplaceError.http(http.statusCode, "ModelScope 请求失败")
         }
-        return Self.parseItems(data)
+        return data
     }
+
+    static func encodedPath(_ raw: String) -> String {
+        raw.split(separator: "/").map { component in
+            String(component).addingPercentEncoding(
+                withAllowedCharacters: CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+            ) ?? String(component)
+        }.joined(separator: "/")
+    }
+
 
     /// 从链接导入:用 owner/name 搜索并选取最匹配的一项。
     public func resolve(link: MarketplaceLink) async throws -> MarketplaceItem? {
@@ -81,17 +146,21 @@ public struct ModelScopeMarketplaceClient: Sendable {
     static func marketplaceItem(from raw: [String: Any]) -> MarketplaceItem? {
         let rawID = string(raw["id"]) ?? string(raw["skill_id"]) ?? string(raw["name"])
         guard let rawID, !rawID.isEmpty else { return nil }
-        let name = string(raw["display_name"]) ?? string(raw["name"]) ?? rawID
+        let fallbackName = rawID.split(separator: "/").last.map(String.init) ?? rawID
+        let name = string(raw["display_name"]) ?? string(raw["name"]) ?? fallbackName
         let owner = ownerName(raw["owner"])
             ?? string(raw["author"])
             ?? string(raw["namespace"])
             ?? string(raw["user_name"])
+            ?? rawID.split(separator: "/").first.map(String.init)
             ?? ""
         let summary = string(raw["description"])
             ?? string(raw["summary"])
             ?? String((string(raw["readme"]) ?? "").prefix(160))
         let license = licenseName(raw["license"])
-        let tags = tagNames(raw["tags"])
+        let tags = tagNames(raw["tags"]).map {
+            $0.hasPrefix("category:") ? String($0.dropFirst("category:".count)) : $0
+        }
         let installURL = string(raw["source_url"])
             ?? string(raw["url"])
             ?? "https://modelscope.cn/skills/\(rawID)"
@@ -109,7 +178,7 @@ public struct ModelScopeMarketplaceClient: Sendable {
             license: license,
             homepage: string(raw["homepage"]) ?? installURL,
             installURL: installURL,
-            iconURL: string(raw["avatar"]) ?? string(raw["icon"]),
+            iconURL: string(raw["logo_url"]) ?? string(raw["avatar"]) ?? string(raw["icon"]),
             installCommand: string(raw["install_command"])
         )
     }

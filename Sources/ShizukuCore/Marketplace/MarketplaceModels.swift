@@ -113,10 +113,16 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
 public struct MarketplaceResult: Sendable {
     public var items: [MarketplaceItem]
     public var errors: [String]
+    public var hasMore: Bool
 
-    public init(items: [MarketplaceItem] = [], errors: [String] = []) {
+    public init(
+        items: [MarketplaceItem] = [],
+        errors: [String] = [],
+        hasMore: Bool = false
+    ) {
         self.items = items
         self.errors = errors
+        self.hasMore = hasMore
     }
 }
 

@@ -700,9 +700,10 @@ final class AppState {
 
     func searchMarketplace(
         query: String,
-        source: MarketplaceSource?
+        source: MarketplaceSource?,
+        page: Int = 1
     ) async -> MarketplaceResult {
-        await marketplace.feed(query: query, source: source)
+        await marketplace.feed(query: query, source: source, page: page)
     }
 
     func importMarketplaceLink(_ raw: String) async throws -> MarketplaceItem {

@@ -12,6 +12,9 @@ struct MarketplaceView: View {
     @State private var items: [MarketplaceItem] = []
     @State private var errors: [String] = []
     @State private var loading = false
+    @State private var loadingMore = false
+    @State private var page = 1
+    @State private var hasMore = false
     @State private var selected: MarketplaceItem?
     @State private var showImport = false
     @State private var showToken = false
@@ -35,7 +38,7 @@ struct MarketplaceView: View {
         .task(id: "\(query)|\(source?.rawValue ?? "all")") {
             try? await Task.sleep(for: .milliseconds(320))
             guard !Task.isCancelled else { return }
-            await load()
+            await load(reset: true)
         }
         .sheet(item: $selected) { item in
             MarketplaceDetailView(item: item)
@@ -85,23 +88,34 @@ struct MarketplaceView: View {
 
     private var content: some View {
         ScrollView {
-            if loading && items.isEmpty {
-                ProgressView("正在加载市场…")
+            VStack(spacing: 0) {
+                if loading && items.isEmpty {
+                    ProgressView("正在加载市场…")
+                        .padding(60)
+                } else if items.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "shippingbox")
+                            .font(.system(size: 34))
+                            .foregroundStyle(.secondary)
+                        Text("没有找到匹配的插件")
+                            .font(.headline)
+                        Text("试试导入 GitHub / 魔搭链接,或换个关键词。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     .padding(60)
-            } else if items.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "shippingbox")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.secondary)
-                    Text("没有找到匹配的插件")
-                        .font(.headline)
-                    Text("试试导入 GitHub / 魔搭链接,或换个关键词。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                } else {
+                    waterfall
+                    if loadingMore {
+                        ProgressView("加载更多…")
+                            .padding(20)
+                    } else if hasMore {
+                        Button("加载更多") {
+                            Task { await load(reset: false) }
+                        }
+                        .padding(16)
+                    }
                 }
-                .padding(60)
-            } else {
-                waterfall
             }
         }
     }
@@ -176,6 +190,11 @@ struct MarketplaceView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear {
+            if item.id == items.last?.id, hasMore, !loadingMore {
+                Task { await load(reset: false) }
+            }
+        }
     }
 
     private func icon(_ item: MarketplaceItem) -> some View {
@@ -205,12 +224,31 @@ struct MarketplaceView: View {
 
     // MARK: - 加载
 
-    private func load() async {
-        loading = true
-        let result = await state.searchMarketplace(query: query, source: source)
-        items = result.items
+    private func load(reset: Bool) async {
+        if reset {
+            page = 1
+            loading = true
+        } else {
+            guard hasMore, !loadingMore else { return }
+            loadingMore = true
+        }
+        let requestedPage = page
+        let result = await state.searchMarketplace(
+            query: query,
+            source: source,
+            page: requestedPage
+        )
+        if reset {
+            items = result.items
+        } else {
+            let existing = Set(items.map(\.id))
+            items.append(contentsOf: result.items.filter { !existing.contains($0.id) })
+        }
         errors = result.errors
+        hasMore = result.hasMore
+        page = requestedPage + 1
         loading = false
+        loadingMore = false
     }
 
     // MARK: - 导入
