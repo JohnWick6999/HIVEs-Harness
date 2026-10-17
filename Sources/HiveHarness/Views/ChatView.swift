@@ -19,6 +19,9 @@ struct ChatView: View {
     @AppStorage(HiveTheme.showUsageBarKey) private var showUsageBar = true
     @FocusState private var composerFocused: Bool
     @State private var showUsage = false
+    @State private var scrollTarget: UUID?
+    @State private var artifactPreview: Artifact?
+    @State private var artifactWindow: Artifact?
 
     var body: some View {
         @Bindable var state = state
@@ -40,7 +43,15 @@ struct ChatView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 8)
                 }
-                messageList
+                HStack(spacing: 0) {
+                    messageList
+                    let turns = ConversationTurnBuilder.build(state.messages)
+                    if !turns.isEmpty {
+                        ConversationRail(turns: turns) { id in
+                            scrollTarget = id
+                        }
+                    }
+                }
                 if let question = state.pendingQuestion {
                     HiveQuestionCard(
                         question: question,
@@ -58,7 +69,20 @@ struct ChatView: View {
                     usageBar
                 }
                 }
+                if let artifactPreview {
+                    Rectangle()
+                        .fill(HiveTheme.hairline)
+                        .frame(width: 1)
+                    ArtifactPreviewPanel(artifact: artifactPreview) {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            self.artifactPreview = nil
+                        }
+                    }
+                    .frame(width: 430)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
+            .animation(.easeInOut(duration: 0.18), value: artifactPreview?.id)
         }
         .preferredColorScheme(HiveAppearance(rawValue: appearance)?.colorScheme)
         .sheet(isPresented: $showSettings) {
@@ -84,6 +108,10 @@ struct ChatView: View {
         .sheet(isPresented: $showBackgroundTasks) {
             AgentBackgroundTasksView()
                 .environment(state)
+        }
+        .sheet(item: $artifactWindow) { artifact in
+            ArtifactPreviewPanel(artifact: artifact) { artifactWindow = nil }
+                .frame(width: 820, height: 640)
         }
         .tint(HiveTheme.amberDeep)
         .onChange(of: state.pendingDraft) { _, draft in
@@ -467,8 +495,12 @@ struct ChatView: View {
                             .frame(minHeight: 500)
                     }
                     ForEach(state.messages) { message in
-                        MessageRow(message: message, assistantName: personaName)
-                            .id(message.id)
+                        MessageRow(
+                            message: message,
+                            assistantName: personaName,
+                            onOpenArtifact: openArtifact
+                        )
+                        .id(message.id)
                     }
                     if !state.lastToolTrace.isEmpty {
                         toolTraceRow
@@ -484,6 +516,13 @@ struct ChatView: View {
                 withAnimation {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
+            }
+            .onChange(of: scrollTarget) { _, id in
+                guard let id else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(id, anchor: .top)
+                }
+                scrollTarget = nil
             }
         }
     }
@@ -970,6 +1009,20 @@ struct ChatView: View {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
+    private func openArtifact(_ file: FileAttachment) {
+        let artifact = Artifact(attachment: file)
+        switch ArtifactPreferences.mode(for: artifact.kind) {
+        case .sidebar:
+            withAnimation(.easeInOut(duration: 0.18)) {
+                artifactPreview = artifact
+            }
+        case .window:
+            artifactWindow = artifact
+        case .external:
+            NSWorkspace.shared.open(artifact.url)
+        }
+    }
+
     private func send() {
         let text = input
         let attachments = pendingAttachments
@@ -987,6 +1040,7 @@ struct ChatView: View {
 struct MessageRow: View {
     let message: ChatMessage
     let assistantName: String
+    var onOpenArtifact: ((FileAttachment) -> Void)? = nil
 
     var body: some View {
         if message.role == .user {
@@ -1094,7 +1148,11 @@ struct MessageRow: View {
                 ForEach(message.fileAttachments) { file in
                     HStack(spacing: 7) {
                         Button {
-                            openFile(file.path)
+                            if let onOpenArtifact {
+                                onOpenArtifact(file)
+                            } else {
+                                openFile(file.path)
+                            }
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "doc.text")
