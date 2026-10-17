@@ -1,11 +1,13 @@
 import SwiftUI
 import HiveHarnessCore
 
-/// 粗粒度推理滑杆:统一档位坐标 + 能量轨道 + 左侧喷溅粒子。
+/// 粗粒度推理滑杆:档位坐标统一;动效严格裁剪在已选区域内,粒子从左侧喷溅。
 struct CometReasoningSlider: View {
     @Binding var effort: ReasoningEffort
     private let levels = ReasoningEffort.allCases
-    private let inset: CGFloat = 24
+    /// 轨道左右留白;节点另留 10pt,保证首尾节点不超出轨道。
+    private let trackInset: CGFloat = 24
+    private let knobInset: CGFloat = 34
 
     var body: some View {
         VStack(spacing: 6) {
@@ -13,88 +15,47 @@ struct CometReasoningSlider: View {
                 let time = timeline.date.timeIntervalSinceReferenceDate
                 GeometryReader { geo in
                     let width = max(1, geo.size.width)
-                    let usable = max(1, width - inset * 2)
-                    let x = inset + fraction * usable
+                    let trackWidth = max(1, width - trackInset * 2)
+                    let knobWidth = max(1, width - knobInset * 2)
+                    let x = knobInset + fraction * knobWidth
+                    let activeWidth = max(0, x - trackInset)
 
                     ZStack {
-                        // 厚底座(与档位坐标共用 inset)
+                        // 轨道底座
                         Capsule()
                             .fill(Color.primary.opacity(0.075))
-                            .frame(width: usable, height: 16)
+                            .frame(width: trackWidth, height: 16)
                             .overlay(
                                 Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
                             )
                             .position(x: width / 2, y: 28)
 
-                        // 呼吸光晕,只覆盖已选区域
-                        if effort != .off {
-                            Capsule()
-                                .fill(color.opacity(0.26 + 0.10 * sin(time * 2.1)))
-                                .frame(width: max(0, x - inset), height: 28)
-                                .blur(radius: 12)
-                                .position(x: inset + max(0, x - inset) / 2, y: 28)
+                        // 已选区域:整层裁剪,光晕/流光/粒子不会越过滑块头右侧
+                        if activeWidth > 0 && effort != .off {
+                            activeLayer(width: activeWidth, time: time)
+                                .frame(width: activeWidth, height: 56, alignment: .leading)
+                                .clipped()
+                                .position(x: trackInset + activeWidth / 2, y: 28)
                         }
 
-                        // 已选能量轨道
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [color.opacity(0.48), color, color.opacity(0.82)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: max(0, x - inset), height: 16)
-                            .overlay {
-                                if effort != .off {
-                                    Capsule()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [.clear, .white.opacity(0.48), .clear],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
-                                        )
-                                        .frame(width: 46)
-                                        .offset(x: CGFloat((sin(time * 1.6) + 1) / 2) * max(0, x - inset - 46))
-                                        .blendMode(.plusLighter)
-                                }
-                            }
-                            .shadow(color: color.opacity(0.38), radius: 8)
-                            .position(x: inset + max(0, x - inset) / 2, y: 28)
-
-                        // 覆盖区域内的漂浮能量点
-                        if effort != .off {
-                            ForEach(0..<flowCount, id: \.self) { index in
-                                let progress = (time * 0.16 + Double(index) / Double(max(1, flowCount)))
-                                    .truncatingRemainder(dividingBy: 1)
-                                Circle()
-                                    .fill(color.opacity(0.65))
-                                    .frame(width: 2.5, height: 2.5)
-                                    .position(
-                                        x: inset + CGFloat(progress) * max(0, x - inset),
-                                        y: 28 + sin(time * 3.0 + Double(index) * 1.2) * 6
-                                    )
-                                    .blur(radius: 0.4)
-                            }
-                        }
-
-                        // 左侧喷溅(等级越高,数量/距离/速度越大)
+                        // 左侧喷溅
                         spray(x: x, time: time)
 
-                        // 彗尾 + 滑块头
+                        // 彗尾与滑块头
                         comet(x: x, time: time)
 
-                        // 档位节点:与底部文字共用同一坐标
+                        // 档位节点:首尾向内收,不再压出轨道
                         ForEach(levels.indices, id: \.self) { index in
                             Circle()
                                 .fill(index <= effort.index ? color : Color.primary.opacity(0.2))
                                 .frame(width: index == effort.index ? 10 : 6,
                                        height: index == effort.index ? 10 : 6)
-                                .shadow(color: index == effort.index ? color.opacity(0.8) : .clear,
-                                        radius: index == effort.index ? 7 : 0)
-                                .position(x: inset + CGFloat(index) / CGFloat(max(1, levels.count - 1)) * usable,
-                                          y: 28)
+                                .shadow(color: index == effort.index ? color.opacity(0.7) : .clear,
+                                        radius: index == effort.index ? 5 : 0)
+                                .position(
+                                    x: knobInset + CGFloat(index) / CGFloat(max(1, levels.count - 1)) * knobWidth,
+                                    y: 28
+                                )
                         }
                     }
                     .frame(height: 56)
@@ -102,23 +63,23 @@ struct CometReasoningSlider: View {
                     .gesture(
                         DragGesture(minimumDistance: 4)
                             .onChanged { value in
-                                update(value.location.x, width: width, usable: usable)
+                                update(value.location.x, width: width)
                             }
                     )
                     .simultaneousGesture(
                         SpatialTapGesture()
                             .onEnded { value in
-                                update(value.location.x, width: width, usable: usable)
+                                update(value.location.x, width: width)
                             }
                     )
                 }
             }
             .frame(height: 56)
 
-            // 底部文字:使用与节点完全相同的 x 坐标
+            // 标签与节点共用同一坐标
             GeometryReader { geo in
                 let width = max(1, geo.size.width)
-                let usable = max(1, width - inset * 2)
+                let knobWidth = max(1, width - knobInset * 2)
                 ForEach(levels) { level in
                     Text(level.title)
                         .font(.system(size: 9, weight: level == effort ? .bold : .regular))
@@ -126,7 +87,7 @@ struct CometReasoningSlider: View {
                         .fixedSize()
                         .position(
                             x: max(16, min(width - 16,
-                                inset + CGFloat(level.index) / CGFloat(max(1, levels.count - 1)) * usable)),
+                                knobInset + CGFloat(level.index) / CGFloat(max(1, levels.count - 1)) * knobWidth)),
                             y: 8
                         )
                         .scaleEffect(level == effort ? 1.06 : 1)
@@ -138,8 +99,58 @@ struct CometReasoningSlider: View {
         .frame(height: 78)
     }
 
-    private func update(_ locationX: CGFloat, width: CGFloat, usable: CGFloat) {
-        let fraction = (locationX - inset) / max(1, usable)
+    /// 只在 activeWidth 内绘制:呼吸光晕、能量轨道、流光、内部粒子。
+    @ViewBuilder
+    private func activeLayer(width: CGFloat, time: TimeInterval) -> some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(color.opacity(0.22 + 0.09 * sin(time * 2.1)))
+                .frame(width: width, height: 28)
+                .blur(radius: 10)
+
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [color.opacity(0.48), color, color.opacity(0.82)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: width, height: 16)
+                .overlay {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, .white.opacity(0.42), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: 42)
+                        .offset(x: CGFloat((sin(time * 1.6) + 1) / 2) * max(0, width - 42))
+                        .blendMode(.plusLighter)
+                }
+
+            ForEach(0..<flowCount, id: \.self) { index in
+                let progress = (time * 0.16 + Double(index) / Double(max(1, flowCount)))
+                    .truncatingRemainder(dividingBy: 1)
+                Circle()
+                    .fill(color.opacity(0.65))
+                    .frame(width: 2.5, height: 2.5)
+                    .position(
+                        x: CGFloat(progress) * width,
+                        y: 28 + sin(time * 3.0 + Double(index) * 1.2) * 6
+                    )
+                    .blur(radius: 0.4)
+            }
+        }
+        .frame(width: width, height: 56, alignment: .leading)
+        .clipped()
+    }
+
+    private func update(_ locationX: CGFloat, width: CGFloat) {
+        let knobWidth = max(1, width - knobInset * 2)
+        let fraction = (locationX - knobInset) / knobWidth
         let index = Int((fraction * CGFloat(levels.count - 1)).rounded())
         let next = levels[min(levels.count - 1, max(0, index))]
         if next != effort { effort = next }
@@ -149,6 +160,7 @@ struct CometReasoningSlider: View {
         CGFloat(effort.index) / CGFloat(max(1, levels.count - 1))
     }
 
+    /// 从滑块头向左喷溅;位置始终在 x 左侧,不会跑到右边。
     @ViewBuilder
     private func spray(x: CGFloat, time: TimeInterval) -> some View {
         let count = sprayCount
@@ -156,7 +168,7 @@ struct CometReasoningSlider: View {
             ForEach(0..<count, id: \.self) { index in
                 let phase = (time * 0.62 + Double(index) / Double(count))
                     .truncatingRemainder(dividingBy: 1)
-                let distance = CGFloat(phase) * (18 + CGFloat(effort.index) * 8)
+                let distance = CGFloat(phase) * (16 + CGFloat(effort.index) * 8)
                 let spread = sin(Double(index) * 2.31 + time * 1.4) * 11
                 Circle()
                     .fill(color.opacity(max(0.05, 0.62 * (1 - phase))))
@@ -171,6 +183,7 @@ struct CometReasoningSlider: View {
         }
     }
 
+    /// 彗尾只向左;不再绘制高级等级环/环绕粒子。
     @ViewBuilder
     private func comet(x: CGFloat, time: TimeInterval) -> some View {
         let count = trailCount
@@ -195,10 +208,10 @@ struct CometReasoningSlider: View {
             }
 
             Circle()
-                .fill(color.opacity(0.35))
-                .frame(width: effort == .max ? 34 : 24,
-                       height: effort == .max ? 34 : 24)
-                .blur(radius: 9)
+                .fill(color.opacity(0.30))
+                .frame(width: effort == .max ? 28 : 20,
+                       height: effort == .max ? 28 : 20)
+                .blur(radius: 8)
                 .position(x: x, y: 28)
 
             Circle()
@@ -208,40 +221,7 @@ struct CometReasoningSlider: View {
                        height: effort == .max ? 20 : 16)
                 .overlay(Circle().stroke(color.opacity(0.9), lineWidth: 1.2))
                 .position(x: x, y: 28)
-                .shadow(color: color.opacity(0.95), radius: effort == .max ? 12 : 7)
-
-            if effort == .max {
-                Circle()
-                    .stroke(
-                        AngularGradient(
-                            colors: [.pink, .purple, .cyan, .white.opacity(0.8), .pink],
-                            center: .center
-                        ),
-                        lineWidth: 2
-                    )
-                    .frame(width: 30, height: 30)
-                    .rotationEffect(.degrees(time * 160))
-                    .position(x: x, y: 28)
-                    .opacity(0.85)
-
-                ForEach(0..<10, id: \.self) { index in
-                    let angle = time * 1.8 + Double(index) / 10 * .pi * 2
-                    Circle()
-                        .fill(index.isMultiple(of: 2) ? Color.pink : Color.cyan)
-                        .frame(width: 3, height: 3)
-                        .position(
-                            x: x + CGFloat(cos(angle)) * 22,
-                            y: 28 + CGFloat(sin(angle)) * 16
-                        )
-                        .shadow(color: .pink.opacity(0.8), radius: 4)
-                }
-            } else if effort == .high {
-                Circle()
-                    .stroke(color.opacity(0.45), lineWidth: 1)
-                    .frame(width: 26, height: 26)
-                    .scaleEffect(1 + 0.12 * sin(time * 3))
-                    .position(x: x, y: 28)
-            }
+                .shadow(color: color.opacity(0.8), radius: effort == .max ? 7 : 4)
         }
     }
 
