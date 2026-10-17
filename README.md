@@ -200,6 +200,7 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 ## 🖥️ 产物预览与对话轨
 
 - Agent 交付文件后,消息下方显示玻璃产物卡片
+- 顶部「预览」按钮可随时弹出当前会话产物菜单,或从本地选择文件
 - 点击默认在右侧边栏打开:
   - HTML:内置 WKWebView
   - PDF / Office / 图片:内置 QuickLook

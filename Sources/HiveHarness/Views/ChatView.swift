@@ -26,6 +26,7 @@ struct ChatView: View {
     @State private var scrollToLatestToken = 0
     @State private var artifactPreview: Artifact?
     @State private var artifactWindow: Artifact?
+    @State private var showArtifactMenu = false
 
     var body: some View {
         @Bindable var state = state
@@ -205,6 +206,30 @@ struct ChatView: View {
             sessionMenu
 
             Spacer()
+
+            Button {
+                showArtifactMenu.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("预览")
+                        .font(.caption2)
+                }
+                .foregroundStyle(artifactPreview == nil ? Color.secondary : HiveTheme.amberDeep)
+                .padding(.horizontal, 7)
+                .frame(height: 24)
+                .hiveGlass(
+                    corner: 8,
+                    tint: HiveTheme.amber.opacity(artifactPreview == nil ? 0.02 : 0.08),
+                    interactive: true
+                )
+            }
+            .buttonStyle(.plain)
+            .help("预览产物")
+            .popover(isPresented: $showArtifactMenu, arrowEdge: .bottom) {
+                artifactMenu
+            }
 
             if state.isBusy {
                 ProgressView()
@@ -1075,8 +1100,111 @@ struct ChatView: View {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
+    private var recentArtifacts: [Artifact] {
+        var seen = Set<String>()
+        var result: [Artifact] = []
+        for message in state.messages.reversed() {
+            for file in message.fileAttachments.reversed() {
+                guard !seen.contains(file.path) else { continue }
+                seen.insert(file.path)
+                result.append(Artifact(attachment: file))
+                if result.count >= 12 { return result }
+            }
+        }
+        return result
+    }
+
+    private var artifactMenu: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("产物预览")
+                        .font(.headline)
+                    Text("当前会话最近交付的文件")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("关闭") { showArtifactMenu = false }
+                    .font(.caption)
+            }
+
+            if recentArtifacts.isEmpty {
+                Text("当前会话还没有产物文件。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                ScrollView {
+                    VStack(spacing: 3) {
+                        ForEach(recentArtifacts, id: \.url.path) { artifact in
+                            Button {
+                                showArtifactMenu = false
+                                openArtifact(artifact)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: artifact.kind.icon)
+                                        .foregroundStyle(HiveTheme.amberDeep)
+                                        .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(artifact.name)
+                                            .font(.callout)
+                                            .lineLimit(1)
+                                        Text(artifact.url.deletingLastPathComponent().path)
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 240)
+            }
+
+            Divider()
+
+            Button {
+                showArtifactMenu = false
+                chooseArtifactFile()
+            } label: {
+                Label("从本地选择文件…", systemImage: "doc.badge.plus")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(HiveTheme.amberDeep)
+        }
+        .padding(14)
+        .frame(width: 330)
+    }
+
+    private func chooseArtifactFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                openArtifact(Artifact(url: url))
+            }
+        }
+    }
+
     private func openArtifact(_ file: FileAttachment) {
-        let artifact = Artifact(attachment: file)
+        openArtifact(Artifact(attachment: file))
+    }
+
+    private func openArtifact(_ artifact: Artifact) {
         switch ArtifactPreferences.mode(for: artifact.kind) {
         case .sidebar:
             withAnimation(.easeInOut(duration: 0.18)) {
