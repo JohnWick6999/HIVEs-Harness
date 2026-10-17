@@ -363,6 +363,9 @@ private struct MarketplaceDetailView: View {
     @State private var installing = false
     @State private var error: String?
     @State private var message: String?
+    @State private var expanded: [MarketplaceItem] = []
+    @State private var expanding = false
+    @State private var selectedChild: MarketplaceItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -403,6 +406,47 @@ private struct MarketplaceDetailView: View {
                     .foregroundStyle(.red)
             }
 
+            if item.kind == .plugin {
+                Divider()
+                HStack {
+                    Text("插件市场目录")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    Button(expanding ? "展开中…" : "展开子插件") {
+                        Task { await expand() }
+                    }
+                    .disabled(expanding)
+                }
+                if !expanded.isEmpty {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(expanded) { child in
+                                Button {
+                                    selectedChild = child
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "puzzlepiece.extension")
+                                            .foregroundStyle(.secondary)
+                                        Text(child.name).font(.caption.weight(.medium))
+                                        Text(child.summary)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 140)
+                }
+            }
+
             if let message {
                 Text(message)
                     .font(.caption)
@@ -412,8 +456,12 @@ private struct MarketplaceDetailView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 700, height: 560)
+        .frame(width: 760, height: 620)
         .task { await prepare() }
+        .sheet(item: $selectedChild) { child in
+            MarketplaceDetailView(item: child)
+                .environment(state)
+        }
     }
 
     @ViewBuilder
@@ -487,6 +535,16 @@ private struct MarketplaceDetailView: View {
                 .disabled(installing)
             }
         }
+    }
+
+    private func expand() async {
+        expanding = true
+        do {
+            expanded = try await state.expandMarketplaceItem(item)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        expanding = false
     }
 
     private func prepare() async {

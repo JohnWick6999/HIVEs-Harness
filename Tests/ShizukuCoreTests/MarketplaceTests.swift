@@ -274,6 +274,103 @@ struct MarketplaceTests {
         #expect(store.load(id: "skill-creator") != nil)
     }
 
+    @Test("Claude marketplace.json 解析与展开")
+    func expandClaudeMarketplace() async throws {
+        MarketplaceMockURLProtocol.handler = { request in
+            guard request.url?.host == "raw.githubusercontent.com" else {
+                return httpJSON(request, [:])
+            }
+            let content = """
+            {"name":"acme-market","owner":{"name":"Acme"},"plugins":[
+              {"name":"pdf-tools","description":"PDF 工具","version":"1.0.0","category":"docs","tags":["pdf"],"source":"./plugins/pdf"},
+              {"name":"remote-tools","description":"远程插件","source":{"source":"github","repo":"acme/remote","sha":"abc"}}
+            ]}
+            """
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(content.utf8))
+        }
+
+        let service = MarketplaceService(session: marketplaceSession())
+        let item = MarketplaceItem(
+            id: "github:acme/market",
+            name: "market",
+            summary: "",
+            source: .github,
+            kind: .plugin,
+            installURL: "https://github.com/acme/market"
+        )
+        let children = try await service.expand(item: item)
+        #expect(children.count == 2)
+        #expect(children[0].name == "pdf-tools")
+        #expect(children[0].installPath == "plugins/pdf")
+        #expect(children[1].name == "remote-tools")
+        #expect(children[1].installURL == "https://github.com/acme/remote")
+    }
+
+    @Test("安装子目录插件时只读取该目录")
+    func installSubdirectory() async throws {
+        MarketplaceMockURLProtocol.handler = { request in
+            let path = request.url?.path ?? ""
+            if path == "/repos/acme/multi" {
+                return httpJSON(request, [
+                    "name": "multi",
+                    "full_name": "acme/multi",
+                    "description": "multi",
+                    "default_branch": "main",
+                    "html_url": "https://github.com/acme/multi",
+                    "owner": ["login": "acme"],
+                ])
+            }
+            if path == "/repos/acme/multi/git/trees/main" {
+                return httpJSON(request, [
+                    "tree": [
+                        ["path": "plugins/pdf/SKILL.md", "type": "blob", "size": 100],
+                        ["path": "other/SKILL.md", "type": "blob", "size": 100],
+                    ]
+                ])
+            }
+            if request.url?.host == "raw.githubusercontent.com" {
+                let content = """
+                ---
+                id: pdf-skill
+                name: PDF 工具
+                description: 处理 PDF
+                ---
+
+                1. 读取 PDF
+                2. 提取文本
+                """
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/plain"]
+                )!
+                return (response, Data(content.utf8))
+            }
+            return httpJSON(request, [:])
+        }
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let item = MarketplaceItem(
+            id: "github:acme/multi/pdf",
+            name: "pdf",
+            summary: "",
+            source: .github,
+            installURL: "https://github.com/acme/multi",
+            installPath: "plugins/pdf"
+        )
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 1)
+        #expect(plan.files[0].skillID == "pdf-skill")
+    }
+
     @Test("MCP 清单一键安装并默认停用")
     func installMCPFromGitHub() async throws {
         MarketplaceMockURLProtocol.handler = { request in

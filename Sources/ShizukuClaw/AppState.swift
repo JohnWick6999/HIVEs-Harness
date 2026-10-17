@@ -746,6 +746,10 @@ final class AppState {
         try await marketplace.importLink(raw)
     }
 
+    func expandMarketplaceItem(_ item: MarketplaceItem) async throws -> [MarketplaceItem] {
+        try await marketplace.expand(item: item)
+    }
+
     func planMarketplaceInstall(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
         try await marketplaceInstaller.plan(for: item)
     }

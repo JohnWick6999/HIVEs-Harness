@@ -96,6 +96,29 @@ public struct GitHubMarketplaceClient: Sendable {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
+    /// 读取仓库内的插件市场清单(Claude / Agent Plugins 格式)。
+    public func marketplace(
+        owner: String,
+        repo: String,
+        ref: String? = nil
+    ) async throws -> ClaudeMarketplace? {
+        let reference = (ref?.isEmpty == false ? ref! : "HEAD")
+        let paths = [".claude-plugin/marketplace.json", "marketplace.json"]
+        for path in paths {
+            guard let raw = try? await rawFile(
+                owner: owner,
+                repo: repo,
+                ref: reference,
+                path: path
+            ), !raw.isEmpty else { continue }
+            if let market = ClaudeMarketplaceParser.parse(Data(raw.utf8)),
+               !market.plugins.isEmpty {
+                return market
+            }
+        }
+        return nil
+    }
+
     public func searchRepositories(
         query: String,
         page: Int = 1,

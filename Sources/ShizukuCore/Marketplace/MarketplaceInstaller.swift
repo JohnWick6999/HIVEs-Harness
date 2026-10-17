@@ -84,7 +84,12 @@ public struct MarketplaceInstaller: Sendable {
         }
         let repository = try await github.repository(owner: target.owner, repo: target.repo)
         let ref = target.ref ?? repository.defaultBranch
-        let tree = try await github.tree(owner: target.owner, repo: target.repo, ref: ref)
+        let fullTree = try await github.tree(owner: target.owner, repo: target.repo, ref: ref)
+        let prefix = item.installPath?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
+        let tree = prefix.isEmpty
+            ? fullTree
+            : fullTree.filter { $0.path == prefix || $0.path.hasPrefix(prefix + "/") }
         let mcpServers = try await parseMCPServers(
             tree: tree,
             owner: target.owner,

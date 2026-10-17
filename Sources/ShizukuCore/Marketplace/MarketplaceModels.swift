@@ -49,6 +49,8 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
     public var iconURL: String?
     /// ModelScope 可能给出的安装命令(不自动执行)
     public var installCommand: String?
+    /// 插件在仓库内的子目录(如 plugins/pdf)
+    public var installPath: String?
 
     public init(
         id: String,
@@ -65,7 +67,8 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
         homepage: String? = nil,
         installURL: String? = nil,
         iconURL: String? = nil,
-        installCommand: String? = nil
+        installCommand: String? = nil,
+        installPath: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -82,11 +85,12 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
         self.installURL = installURL
         self.iconURL = iconURL
         self.installCommand = installCommand
+        self.installPath = installPath
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, summary, author, version, source, kind, tags
-        case stars, downloads, license, homepage, installURL, iconURL, installCommand
+        case stars, downloads, license, homepage, installURL, iconURL, installCommand, installPath
     }
 
     /// 远程/内置清单字段不齐时使用默认值,避免整份目录解码失败。
@@ -107,6 +111,7 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
         installURL = try container.decodeIfPresent(String.self, forKey: .installURL)
         iconURL = try container.decodeIfPresent(String.self, forKey: .iconURL)
         installCommand = try container.decodeIfPresent(String.self, forKey: .installCommand)
+        installPath = try container.decodeIfPresent(String.self, forKey: .installPath)
     }
 }
 

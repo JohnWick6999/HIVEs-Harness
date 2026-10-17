@@ -6,6 +6,7 @@ public actor MarketplaceService {
     private let modelScope: ModelScopeMarketplaceClient
     private let builtin: [MarketplaceItem]
     private var cache: [String: (date: Date, result: MarketplaceResult)] = [:]
+    private var expansions: [String: [MarketplaceItem]] = [:]
 
     public init(githubToken: String? = nil, session: URLSession = .shared) {
         self.github = GitHubMarketplaceClient(session: session, token: githubToken)
@@ -66,6 +67,97 @@ public actor MarketplaceService {
         let result = MarketplaceResult(items: merged, errors: errors, hasMore: hasMore)
         cache[key] = (Date(), result)
         return result
+    }
+
+    /// 展开 GitHub 插件市场仓库(Claude `marketplace.json`)为子插件卡片。
+    public func expand(item: MarketplaceItem) async throws -> [MarketplaceItem] {
+        guard let raw = item.installURL,
+              let link = MarketplaceLinkParser.parse(raw),
+              case let .github(owner, repo, ref) = link
+        else {
+            throw MarketplaceError.unsupportedSource("仅支持 GitHub 插件市场目录")
+        }
+        let key = "\(owner)/\(repo)@\(ref ?? "HEAD")"
+        if let cached = expansions[key] { return cached }
+        guard let market = try await github.marketplace(owner: owner, repo: repo, ref: ref) else {
+            throw MarketplaceError.invalidPackage("该仓库没有 .claude-plugin/marketplace.json 或 marketplace.json")
+        }
+        let baseURL = "https://github.com/\(owner)/\(repo)"
+        var items: [MarketplaceItem] = []
+        for entry in market.plugins {
+            switch entry.source {
+            case .relative(let path):
+                let normalized = Self.normalizePath(path)
+                items.append(
+                    MarketplaceItem(
+                        id: "github:\(owner)/\(repo)/\(MarketplaceInstaller.sanitize(entry.name))",
+                        name: entry.name,
+                        summary: entry.description,
+                        author: owner,
+                        version: entry.version,
+                        source: .github,
+                        kind: .plugin,
+                        tags: entry.tags,
+                        homepage: baseURL,
+                        installURL: baseURL,
+                        installPath: normalized.isEmpty ? nil : normalized
+                    )
+                )
+            case let .github(repoPath, ref, _):
+                let parts = repoPath.split(separator: "/")
+                guard parts.count >= 2 else { continue }
+                let repoURL = "https://github.com/\(repoPath)"
+                items.append(
+                    MarketplaceItem(
+                        id: "github:\(repoPath)/\(MarketplaceInstaller.sanitize(entry.name))",
+                        name: entry.name,
+                        summary: entry.description,
+                        author: String(parts[0]),
+                        version: entry.version,
+                        source: .github,
+                        kind: .plugin,
+                        tags: entry.tags,
+                        homepage: repoURL,
+                        installURL: ref.map { "\(repoURL)/tree/\($0)" } ?? repoURL
+                    )
+                )
+            case let .gitSubdir(repoPath, _, path):
+                let parts = repoPath.split(separator: "/")
+                guard parts.count >= 2 else { continue }
+                let repoURL = "https://github.com/\(repoPath)"
+                items.append(
+                    MarketplaceItem(
+                        id: "github:\(repoPath)/\(MarketplaceInstaller.sanitize(entry.name))",
+                        name: entry.name,
+                        summary: entry.description,
+                        author: String(parts[0]),
+                        version: entry.version,
+                        source: .github,
+                        kind: .plugin,
+                        tags: entry.tags,
+                        homepage: repoURL,
+                        installURL: repoURL,
+                        installPath: Self.normalizePath(path)
+                    )
+                )
+            case .archive, .npm, .command:
+                // 首版不自动安装 npm/archive/command 源,避免执行未知脚本。
+                continue
+            }
+        }
+        guard !items.isEmpty else {
+            throw MarketplaceError.invalidPackage("市场清单中没有可自动安装的插件")
+        }
+        expansions[key] = items
+        return items
+    }
+
+    private static func normalizePath(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while text.hasPrefix("./") {
+            text.removeFirst(2)
+        }
+        return text.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     public func importLink(_ raw: String) async throws -> MarketplaceItem {
