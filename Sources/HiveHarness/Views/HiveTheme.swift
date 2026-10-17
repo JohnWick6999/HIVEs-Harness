@@ -93,8 +93,9 @@ struct HiveQuestionCard: View {
     let onAnswer: (ClarificationAnswer) -> Void
     let onSkip: () -> Void
 
-    @State private var selected: Set<String>
-    @State private var freeform = ""
+    @State private var index = 0
+    @State private var selections: [Int: Set<String>]
+    @State private var freeforms: [Int: String] = [:]
 
     init(
         question: ClarificationRequest,
@@ -104,11 +105,21 @@ struct HiveQuestionCard: View {
         self.question = question
         self.onAnswer = onAnswer
         self.onSkip = onSkip
-        let recommended = question.options
-            .filter(\.recommended)
-            .map(\.label)
-        _selected = State(initialValue: Set(question.allowsMultiple ? recommended : Array(recommended.prefix(1))))
+        var initial: [Int: Set<String>] = [:]
+        for (index, item) in question.questions.enumerated() {
+            let recommended = item.options.filter(\.recommended).map(\.label)
+            initial[index] = Set(
+                item.allowsMultiple ? recommended : Array(recommended.prefix(1))
+            )
+        }
+        _selections = State(initialValue: initial)
     }
+
+    private var current: ClarificationQuestion {
+        question.questions[min(index, max(0, question.questions.count - 1))]
+    }
+
+    private var isLast: Bool { index >= question.questions.count - 1 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -117,65 +128,78 @@ struct HiveQuestionCard: View {
                     .foregroundStyle(HiveTheme.amber)
                 Text("HIVE 需要你确认")
                     .font(.caption.weight(.semibold))
+                if question.questions.count > 1 {
+                    Text("\(index + 1)/\(question.questions.count)")
+                        .font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(HiveTheme.amber.opacity(0.14), in: Capsule())
+                        .foregroundStyle(HiveTheme.amberDeep)
+                }
                 Spacer()
                 Text("可跳过")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
 
-            Text(question.question)
-                .font(.system(.body, design: .rounded).weight(.semibold))
-                .textSelection(.enabled)
-
-            if !question.context.isEmpty {
-                Text(question.context)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-
-            if !question.options.isEmpty {
-                VStack(spacing: 6) {
-                    ForEach(question.options) { option in
-                        optionRow(option)
-                    }
-                }
-            }
-
-            if question.allowsFreeform {
-                TextField("其他补充…(可只填这里)", text: $freeform, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...3)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(HiveTheme.hairline, lineWidth: 1)
+            ZStack(alignment: .topLeading) {
+                questionBody(current)
+                    .id(index)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        )
                     )
             }
+            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: index)
 
-            HStack {
-                Spacer()
-                Button("跳过") { onSkip() }
+            HStack(spacing: 8) {
+                Button("跳过全部") { onSkip() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .keyboardShortcut(.cancelAction)
-                Button("确认") {
-                    onAnswer(
-                        ClarificationAnswer(
-                            selected: question.options
-                                .map(\.label)
-                                .filter { selected.contains($0) },
-                            freeform: freeform.trimmingCharacters(in: .whitespacesAndNewlines),
-                            cancelled: false
-                        )
-                    )
+
+                Spacer()
+
+                if index > 0 {
+                    Button {
+                        withAnimation { index -= 1 }
+                    } label: {
+                        Label("上一步", systemImage: "chevron.left")
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(HiveTheme.amberDeep)
-                .disabled(selected.isEmpty && freeform.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .keyboardShortcut(.defaultAction)
+
+                if isLast {
+                    Button("确认") { confirm() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(HiveTheme.amberDeep)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button {
+                        withAnimation { index += 1 }
+                    } label: {
+                        Label("下一步", systemImage: "chevron.right")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(HiveTheme.amberDeep)
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+
+            if question.questions.count > 1 {
+                HStack(spacing: 5) {
+                    ForEach(Array(question.questions.enumerated()), id: \.offset) { dot, _ in
+                        Capsule()
+                            .fill(dot == index ? HiveTheme.amber : HiveTheme.hairline)
+                            .frame(width: dot == index ? 16 : 6, height: 4)
+                            .animation(.easeInOut(duration: 0.18), value: index)
+                    }
+                    Spacer()
+                    Text("回答会在最后统一提交,可随时返回修改")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .padding(14)
@@ -196,19 +220,59 @@ struct HiveQuestionCard: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    private func optionRow(_ option: ClarificationOption) -> some View {
+    @ViewBuilder
+    private func questionBody(_ item: ClarificationQuestion) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(item.question)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .textSelection(.enabled)
+
+            if !item.context.isEmpty {
+                Text(item.context)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            if !item.options.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(item.options) { option in
+                        optionRow(option, item: item)
+                    }
+                }
+            }
+
+            if item.allowsFreeform {
+                TextField("其他补充…(可只填这里)", text: freeformBinding(index), axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...3)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(HiveTheme.hairline, lineWidth: 1)
+                    )
+            }
+        }
+    }
+
+    private func optionRow(_ option: ClarificationOption, item: ClarificationQuestion) -> some View {
+        let selected = selections[index] ?? []
         let isSelected = selected.contains(option.label)
         return Button {
-            if question.allowsMultiple {
-                if isSelected { selected.remove(option.label) } else { selected.insert(option.label) }
+            var current = selections[index] ?? []
+            if item.allowsMultiple {
+                if isSelected { current.remove(option.label) } else { current.insert(option.label) }
             } else {
-                selected = [option.label]
+                current = [option.label]
             }
+            selections[index] = current
         } label: {
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: isSelected
-                      ? (question.allowsMultiple ? "checkmark.square.fill" : "largecircle.fill.circle")
-                      : (question.allowsMultiple ? "square" : "circle"))
+                      ? (item.allowsMultiple ? "checkmark.square.fill" : "largecircle.fill.circle")
+                      : (item.allowsMultiple ? "square" : "circle"))
                     .foregroundStyle(isSelected ? HiveTheme.amberDeep : .secondary)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 2) {
@@ -240,5 +304,25 @@ struct HiveQuestionCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func freeformBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { freeforms[index] ?? "" },
+            set: { freeforms[index] = $0 }
+        )
+    }
+
+    private func confirm() {
+        let answers = question.questions.enumerated().map { offset, item in
+            let selected = selections[offset] ?? []
+            let freeform = (freeforms[offset] ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return ClarificationQuestionAnswer(
+                selected: item.options.map(\.label).filter { selected.contains($0) },
+                freeform: freeform.isEmpty ? nil : freeform
+            )
+        }
+        onAnswer(ClarificationAnswer(answers: answers))
     }
 }

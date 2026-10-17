@@ -15,11 +15,10 @@ public struct ClarificationOption: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Agent 主动向用户发起的澄清请求。
-public struct ClarificationRequest: Sendable, Equatable, Identifiable {
+/// 一个独立问题(支持多问题向导)。
+public struct ClarificationQuestion: Sendable, Equatable, Identifiable {
     public var id: UUID
     public var question: String
-    /// 为什么需要这个信息 / 不同选择的影响。
     public var context: String
     public var options: [ClarificationOption]
     public var allowsMultiple: Bool
@@ -42,17 +41,74 @@ public struct ClarificationRequest: Sendable, Equatable, Identifiable {
     }
 }
 
-/// 用户回答:选项 + 自由补充;cancel 表示跳过。
-public struct ClarificationAnswer: Sendable, Equatable {
+/// Agent 主动向用户发起的一组澄清问题。
+public struct ClarificationRequest: Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var questions: [ClarificationQuestion]
+
+    public init(id: UUID = UUID(), questions: [ClarificationQuestion]) {
+        self.id = id
+        self.questions = questions
+    }
+
+    /// 单问题便捷构造(保持既有调用方兼容)。
+    public init(
+        id: UUID = UUID(),
+        question: String,
+        context: String = "",
+        options: [ClarificationOption] = [],
+        allowsMultiple: Bool = false,
+        allowsFreeform: Bool = true
+    ) {
+        self.id = id
+        self.questions = [
+            ClarificationQuestion(
+                question: question,
+                context: context,
+                options: options,
+                allowsMultiple: allowsMultiple,
+                allowsFreeform: allowsFreeform
+            ),
+        ]
+    }
+
+    public var question: String { questions.first?.question ?? "" }
+    public var context: String { questions.first?.context ?? "" }
+    public var options: [ClarificationOption] { questions.first?.options ?? [] }
+    public var allowsMultiple: Bool { questions.first?.allowsMultiple ?? false }
+    public var allowsFreeform: Bool { questions.first?.allowsFreeform ?? true }
+}
+
+/// 单个问题的回答。
+public struct ClarificationQuestionAnswer: Sendable, Equatable {
     public var selected: [String]
     public var freeform: String?
-    public var cancelled: Bool
 
-    public init(selected: [String] = [], freeform: String? = nil, cancelled: Bool = false) {
+    public init(selected: [String] = [], freeform: String? = nil) {
         self.selected = selected
         self.freeform = freeform
+    }
+}
+
+/// 用户回答:逐题选项 + 自由补充;cancel 表示整组跳过。
+public struct ClarificationAnswer: Sendable, Equatable {
+    public var answers: [ClarificationQuestionAnswer]
+    public var cancelled: Bool
+
+    public init(answers: [ClarificationQuestionAnswer] = [], cancelled: Bool = false) {
+        self.answers = answers
         self.cancelled = cancelled
     }
+
+    /// 单问题便捷构造。
+    public init(selected: [String] = [], freeform: String? = nil, cancelled: Bool = false) {
+        self.answers = cancelled ? [] : [ClarificationQuestionAnswer(selected: selected, freeform: freeform)]
+        self.cancelled = cancelled
+    }
+
+    /// 兼容旧代码:第一题的选项/补充。
+    public var selected: [String] { answers.first?.selected ?? [] }
+    public var freeform: String? { answers.first?.freeform }
 
     public static let cancelled = ClarificationAnswer(cancelled: true)
 }
@@ -105,13 +161,22 @@ public actor ClarificationGate {
 
     /// 返回 false 表示本轮不应再问(预算耗尽或重复问题)。
     public func shouldAsk(_ question: String) -> Bool {
-        guard asked < maxQuestions else { return false }
-        let key = question
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard !key.isEmpty, !normalized.contains(key) else { return false }
-        asked += 1
-        normalized.insert(key)
+        shouldAsk(questions: [question])
+    }
+
+    /// 批量提问:整组通过才计入预算,任一重复/超预算则整组拒绝。
+    public func shouldAsk(questions: [String]) -> Bool {
+        let keys = questions.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        guard !keys.isEmpty,
+              !keys.contains(where: \.isEmpty),
+              asked + keys.count <= maxQuestions,
+              Set(keys).count == keys.count,
+              normalized.isDisjoint(with: keys)
+        else { return false }
+        asked += keys.count
+        normalized.formUnion(keys)
         return true
     }
 

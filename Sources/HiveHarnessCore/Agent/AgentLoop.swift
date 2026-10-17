@@ -895,14 +895,19 @@ public actor AgentLoop {
         let arguments = Self.parseArguments(call.arguments)
         let isClarification = call.name == "ask_user"
         if isClarification {
-            let question = (arguments["question"]?.value as? String ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let batch = (arguments["questions"]?.value as? [Any] ?? []).compactMap { raw in
+                (raw as? [String: Any])?["question"] as? String
+            }
+            let question = batch.isEmpty
+                ? (arguments["question"]?.value as? String ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                : batch.joined(separator: " / ")
             let context = arguments["context"]?.value as? String ?? ""
             recorder.add(
                 .question,
                 title: "等待用户回答",
                 detail: question,
-                metadata: ["context": context]
+                metadata: ["context": context, "count": String(max(1, batch.count))]
             )
         }
         var ok = true
