@@ -47,6 +47,8 @@ final class AppState {
     private let personas: PersonaStore
     private let mcpRegistry: MCPRegistry
     let skillStore: SkillStore
+    private var marketplace: MarketplaceService
+    private var marketplaceInstaller: MarketplaceInstaller
 
     // MARK: - 审批内部状态
 
@@ -81,6 +83,10 @@ final class AppState {
         try? FileManager.default.createDirectory(at: skillsDir, withIntermediateDirectories: true)
         skillsDirectory = skillsDir
         skillStore = SkillStore(userDirectory: skillsDir)
+
+        let githubToken = (try? keychain.string(forKey: "github.token")) ?? ""
+        marketplace = MarketplaceService(githubToken: githubToken)
+        marketplaceInstaller = MarketplaceInstaller(githubToken: githubToken, skillStore: skillStore)
 
         // 迁移旧工作区文件(Application Support/workspace -> Documents/ShizukuClaw)
         let legacyWorkspace = base.appendingPathComponent("workspace", isDirectory: true)
@@ -607,6 +613,41 @@ final class AppState {
         let skill = try skillStore.install(from: url)
         skills = skillStore.all()
         return skill
+    }
+
+    // MARK: - 插件市场
+
+    var githubToken: String {
+        (try? keychain.string(forKey: "github.token")) ?? ""
+    }
+
+    func setGitHubToken(_ token: String) {
+        try? keychain.setString(token, forKey: "github.token")
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        marketplace = MarketplaceService(githubToken: trimmed)
+        marketplaceInstaller = MarketplaceInstaller(githubToken: trimmed, skillStore: skillStore)
+    }
+
+    func searchMarketplace(
+        query: String,
+        source: MarketplaceSource?
+    ) async -> MarketplaceResult {
+        await marketplace.feed(query: query, source: source)
+    }
+
+    func importMarketplaceLink(_ raw: String) async throws -> MarketplaceItem {
+        try await marketplace.importLink(raw)
+    }
+
+    func planMarketplaceInstall(_ item: MarketplaceItem) async throws -> MarketplaceInstallPlan {
+        try await marketplaceInstaller.plan(for: item)
+    }
+
+    @discardableResult
+    func installMarketplacePlan(_ plan: MarketplaceInstallPlan) throws -> [Skill] {
+        let installed = try marketplaceInstaller.install(plan)
+        skills = skillStore.all()
+        return installed
     }
 
     // MARK: - 本地网关

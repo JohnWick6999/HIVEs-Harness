@@ -1,0 +1,81 @@
+[
+  {
+    "id": "builtin:code-review",
+    "name": "代码审查",
+    "summary": "逐文件审查 bug、安全、并发与可维护性,按严重级别输出修复建议。",
+    "author": "Shizuku",
+    "version": "1.0.0",
+    "source": "builtin",
+    "kind": "skill",
+    "tags": ["coding", "review", "security"],
+    "installURL": "builtin://code-review"
+  },
+  {
+    "id": "builtin:meeting-notes",
+    "name": "会议纪要",
+    "summary": "把零散记录整理成决策、待办、负责人、截止时间与风险。",
+    "author": "Shizuku",
+    "version": "1.0.0",
+    "source": "builtin",
+    "kind": "skill",
+    "tags": ["writing", "summary"],
+    "installURL": "builtin://meeting-notes"
+  },
+  {
+    "id": "builtin:git-commit",
+    "name": "提交信息生成",
+    "summary": "读取变更,生成符合 Conventional Commits 的中文提交信息。",
+    "author": "Shizuku",
+    "version": "1.0.0",
+    "source": "builtin",
+    "kind": "skill",
+    "tags": ["coding", "git"],
+    "installURL": "builtin://git-commit"
+  },
+  {
+    "id": "builtin:research-brief",
+    "name": "调研简报",
+    "summary": "多源检索、交叉验证、区分事实与推测,输出带引用的技术简报。",
+    "author": "Shizuku",
+    "version": "1.0.0",
+    "source": "builtin",
+    "kind": "skill",
+    "tags": ["research", "citations"],
+    "installURL": "builtin://research-brief"
+  },
+  {
+    "id": "builtin:data-cleanup",
+    "name": "数据清洗",
+    "summary": "检查 CSV/JSON 数据质量,给出可复现的清洗步骤与校验规则。",
+    "author": "Shizuku",
+    "version": "1.0.0",
+    "source": "builtin",
+    "kind": "skill",
+    "tags": ["data", "quality"],
+    "installURL": "builtin://data-cleanup"
+  },
+  {
+    "id": "github:anthropics/claude-plugins-official",
+    "name": "Claude Plugins Official",
+    "summary": "Anthropic 官方插件市场目录,可按 `.claude-plugin/marketplace.json` 格式解析与导入。",
+    "author": "anthropics",
+    "source": "github",
+    "kind": "plugin",
+    "tags": ["official", "marketplace"],
+    "license": "MIT",
+    "homepage": "https://github.com/anthropics/claude-plugins-official",
+    "installURL": "https://github.com/anthropics/claude-plugins-official"
+  },
+  {
+    "id": "github:modelcontextprotocol/servers",
+    "name": "MCP Servers",
+    "summary": "官方 MCP 服务器参考集合;可在完全控制模式下接入 stdio / HTTP 服务器。",
+    "author": "modelcontextprotocol",
+    "source": "github",
+    "kind": "mcp",
+    "tags": ["mcp", "official"],
+    "license": "MIT",
+    "homepage": "https://github.com/modelcontextprotocol/servers",
+    "installURL": "https://github.com/modelcontextprotocol/servers"
+  }
+]

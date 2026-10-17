@@ -5,6 +5,7 @@ struct ChatView: View {
     @Environment(AppState.self) private var state
     @State private var input = ""
     @State private var showSettings = false
+    @State private var showMarketplace = false
     @State private var planExpanded = true
     @State private var showContext = false
 
@@ -27,6 +28,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+                .environment(state)
+        }
+        .sheet(isPresented: $showMarketplace) {
+            MarketplaceView()
                 .environment(state)
         }
         .onChange(of: state.pendingDraft) { _, draft in
@@ -88,6 +93,13 @@ struct ChatView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Button {
+                showMarketplace = true
+            } label: {
+                Image(systemName: "storefront")
+            }
+            .help("插件市场")
 
             Button {
                 showSettings = true
