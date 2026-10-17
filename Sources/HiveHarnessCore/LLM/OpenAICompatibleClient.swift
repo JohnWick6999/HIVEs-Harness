@@ -25,6 +25,33 @@ public struct OpenAICompatibleClient: LLMClient {
 
     private var chatEndpoint: URL { URL(string: "\(baseURL)/chat/completions")! }
 
+    /// OpenAI / DeepSeek usage 的兼容解析。
+    private struct APIUsage: Decodable {
+        struct PromptDetails: Decodable {
+            let cached_tokens: Int?
+        }
+        let prompt_tokens: Int?
+        let completion_tokens: Int?
+        let total_tokens: Int?
+        let prompt_tokens_details: PromptDetails?
+        let prompt_cache_hit_tokens: Int?
+        let prompt_cache_miss_tokens: Int?
+
+        func toLLMUsage() -> LLMUsage {
+            let prompt = prompt_tokens ?? 0
+            let completion = completion_tokens ?? 0
+            let cached = prompt_cache_hit_tokens
+                ?? prompt_tokens_details?.cached_tokens
+                ?? 0
+            return LLMUsage(
+                promptTokens: prompt,
+                completionTokens: completion,
+                totalTokens: total_tokens ?? (prompt + completion),
+                cachedTokens: cached
+            )
+        }
+    }
+
     private func makeRequest(tools: [ToolSpec]?) -> URLRequest {
         var request = URLRequest(url: chatEndpoint)
         request.httpMethod = "POST"
@@ -46,6 +73,10 @@ public struct OpenAICompatibleClient: LLMClient {
             "temperature": temperature,
             "stream": stream,
         ]
+        if stream {
+            // OpenAI / DeepSeek 支持;让最后一个 chunk 带回 usage。
+            payload["stream_options"] = ["include_usage": true]
+        }
         if let tools, !tools.isEmpty {
             payload["tools"] = tools.map { tool in
                 [
@@ -129,6 +160,7 @@ public struct OpenAICompatibleClient: LLMClient {
                 let finish_reason: String?
             }
             let choices: [Choice]
+            let usage: APIUsage?
         }
 
         do {
@@ -142,7 +174,8 @@ public struct OpenAICompatibleClient: LLMClient {
             return LLMResponse(
                 content: choice.message.content ?? "",
                 toolCalls: calls,
-                finishReason: choice.finish_reason
+                finishReason: choice.finish_reason,
+                usage: decoded.usage?.toLLMUsage()
             )
         } catch let error as LLMError {
             throw error
@@ -241,12 +274,17 @@ public struct OpenAICompatibleClient: LLMClient {
                 let delta: Delta
                 let finish_reason: String?
             }
-            let choices: [Choice]
+            let choices: [Choice]?
+            let usage: APIUsage?
         }
 
         guard let data = payload.data(using: .utf8) else { return }
         let decoded = try JSONDecoder().decode(StreamResponse.self, from: data)
-        guard let choice = decoded.choices.first else { return }
+        if let usage = decoded.usage {
+            // usage-only chunk(choices 为空)也要产出,否则统计会丢。
+            yield(LLMStreamChunk(delta: "", usage: usage.toLLMUsage()))
+        }
+        guard let choice = decoded.choices?.first else { return }
 
         let delta = choice.delta
         if let calls = delta.tool_calls {

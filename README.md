@@ -16,7 +16,8 @@
 | 🎭 通用人格 | 7 个通用内置人格;可覆盖、恢复默认;自定义人格可增删 | ✅ |
 | 🛠️ 工具与审批 | 文件、记忆、Shell、Git、本地 Agent CLI;三档工作模式 + Touch ID | ✅ |
 | 📋 任务计划 | todo 工具、计划面板、超预算摘要压缩 | ✅ |
-| 🧾 运行日志 | 模型/工具/审批/压缩时间线,事件回放与 JSON 导出 | ✅ |
+| 🧾 运行日志 | 模型/工具/审批/压缩时间线,事件回放、问答回看与 JSON 导出 | ✅ |
+| 📊 AI 用量 | 底部状态条:token、缓存命中、模型轮数、运行/工具次数;按会话持久化 | ✅ |
 | 🧩 MCP | stdio + Streamable HTTP;`servers.json` 管理 | ✅ |
 | 🧬 Skills 自进化 | 轨迹反思、patch 优先、风险扫描、使用遥测、30 天归档 | ✅ |
 | 🔁 技能版本 | 覆盖前自动备份、历史版本、一键回滚、`_ledger.jsonl` | ✅ |
@@ -108,6 +109,23 @@ open build/HiveHarness.app
 - **可审计**:问题与回答写入运行日志 `question` / `answer` 事件;运行日志新增「问答」页签,直接回看问与答。
 - **通道隔离**:网关请求没有 UI 通道,不暴露 `ask_user`,避免外部调用永久挂起。
 
+## 📊 AI 用量
+
+聊天底部有一条常驻状态条:
+
+- **tokens**:Prompt / Completion / 总计
+- **缓存命中**:命中 token 数与命中率(来自模型返回的 usage)
+- **调用**:模型轮数、用户运行次数、工具调用次数、平均每次 token
+- 点 ⓘ 查看明细;菜单可「复制统计」「清零当前会话」
+
+缓存字段兼容:
+
+- OpenAI `usage.prompt_tokens_details.cached_tokens`
+- DeepSeek `usage.prompt_cache_hit_tokens`
+- 流式请求会带 `stream_options.include_usage`,以便最后一个 chunk 返回 usage
+
+统计按会话保存在 SQLite `kv_store` 的 `usage.<thread_id>`,切换会话自动加载;模型未返回 usage 时用本地估算兜底。
+
 ## 🛠️ 首次使用
 
 1. 打开 App → 设置 → 模型,填写 Base URL、模型名与 API Key(Keychain 存储)。
@@ -188,7 +206,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 158 tests in 32 suites passed
+# 163 tests in 33 suites passed
 ```
 
 ## 🔄 与旧版的关系

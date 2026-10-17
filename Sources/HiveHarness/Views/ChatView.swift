@@ -11,6 +11,7 @@ struct ChatView: View {
     @State private var planExpanded = true
     @State private var showContext = false
     @FocusState private var composerFocused: Bool
+    @State private var showUsage = false
 
     var body: some View {
         @Bindable var state = state
@@ -37,6 +38,7 @@ struct ChatView: View {
                     approvalBar(approval)
                 }
                 inputBar
+                usageBar
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -598,6 +600,149 @@ struct ChatView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial)
+    }
+
+    // MARK: - AI 用量
+
+    private var usageBar: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "chart.bar.xaxis")
+                .foregroundStyle(HiveTheme.amberDeep)
+            Text("AI 用量")
+                .fontWeight(.medium)
+            Text("\(state.usageStats.totalTokens.formatted()) tok")
+                .monospacedDigit()
+            if state.usageStats.promptTokens > 0 {
+                Text("缓存 \(cachePercent)%")
+                    .monospacedDigit()
+            }
+            if state.lastRunUsage.totalTokens > 0 {
+                Text("本次 \(state.lastRunUsage.totalTokens.formatted())")
+                    .foregroundStyle(.tertiary)
+            }
+            Text("\(state.usageStats.modelCalls) 轮 · \(state.usageStats.runs) 次")
+                .monospacedDigit()
+            Spacer()
+            Button {
+                showUsage.toggle()
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(.plain)
+            .help("查看 AI 用量明细")
+            .popover(isPresented: $showUsage, arrowEdge: .bottom) {
+                usagePopover
+            }
+            Menu {
+                Button("查看用量明细") { showUsage = true }
+                Button("复制统计") { copyUsage() }
+                Divider()
+                Button("清零当前会话统计", role: .destructive) {
+                    state.resetUsageStats()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("AI 用量工具")
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(HiveTheme.hairline)
+                .frame(height: 1)
+        }
+    }
+
+    private var cachePercent: String {
+        String(format: "%.1f%%", state.usageStats.cacheHitRate * 100)
+    }
+
+    private var usagePopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("AI 用量")
+                    .font(.headline)
+                Spacer()
+                Button("清零") {
+                    state.resetUsageStats()
+                }
+                .font(.caption)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 5) {
+                GridRow {
+                    Text("Prompt")
+                    Text("\(state.usageStats.promptTokens.formatted()) tok")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("Completion")
+                    Text("\(state.usageStats.completionTokens.formatted()) tok")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("总计")
+                    Text("\(state.usageStats.totalTokens.formatted()) tok")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("缓存命中")
+                    Text("\(state.usageStats.cachedTokens.formatted()) tok · \(cachePercent)")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("模型调用")
+                    Text("\(state.usageStats.modelCalls) 轮")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("运行次数")
+                    Text("\(state.usageStats.runs) 次")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("工具调用")
+                    Text("\(state.usageStats.toolCalls) 次")
+                        .monospacedDigit()
+                }
+                GridRow {
+                    Text("平均每次")
+                    Text("\(state.usageStats.averageTokensPerRun.formatted()) tok")
+                        .monospacedDigit()
+                }
+            }
+            .font(.caption)
+
+            Divider()
+
+            Text("按当前会话累计;缓存字段来自模型返回的 usage。数据保存在本地 SQLite。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(width: 330)
+    }
+
+    private func copyUsage() {
+        let text = """
+        AI 用量(当前会话)
+        Prompt: \(state.usageStats.promptTokens)
+        Completion: \(state.usageStats.completionTokens)
+        Total: \(state.usageStats.totalTokens)
+        Cached: \(state.usageStats.cachedTokens)
+        缓存命中率: \(cachePercent)
+        模型调用: \(state.usageStats.modelCalls)
+        运行次数: \(state.usageStats.runs)
+        工具调用: \(state.usageStats.toolCalls)
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     private func send() {

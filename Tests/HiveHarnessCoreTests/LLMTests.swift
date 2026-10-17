@@ -218,6 +218,66 @@ struct LLMClientSuite {
         #expect(finalToolCalls.first?.arguments.contains("./a.txt") == true)
     }
 
+    @Test("非流式:解析 usage 与缓存命中")
+    func nonStreamUsage() async throws {
+        let session = mockSession()
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let json = """
+            {"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],
+             "usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,
+                      "prompt_tokens_details":{"cached_tokens":80}}}
+            """
+            return (response, Data(json.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = OpenAICompatibleClient(
+            baseURL: "https://api.example.com/v1", apiKey: "sk", model: "m", session: session
+        )
+        let response = try await client.chat(messages: [.text(.user, "hi")], tools: nil)
+        let usage = try #require(response.usage)
+        #expect(usage.promptTokens == 100)
+        #expect(usage.completionTokens == 20)
+        #expect(usage.cachedTokens == 80)
+        #expect(abs(usage.cacheHitRate - 0.8) < 0.0001)
+    }
+
+    @Test("流式:usage-only chunk 也能被统计")
+    func streamUsage() async throws {
+        let session = mockSession()
+        let sse = """
+        data: {"choices":[{"delta":{"content":"ok"}}]}
+
+        data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15,"prompt_cache_hit_tokens":6}}
+
+        data: [DONE]
+
+        """
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data(sse.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = OpenAICompatibleClient(
+            baseURL: "https://api.example.com/v1", apiKey: "sk", model: "m", session: session
+        )
+        var usage = LLMUsage.zero
+        for try await chunk in client.stream(messages: [.text(.user, "hi")], tools: nil) {
+            if let chunkUsage = chunk.usage {
+                usage = usage + chunkUsage
+            }
+        }
+        #expect(usage.promptTokens == 10)
+        #expect(usage.completionTokens == 5)
+        #expect(usage.cachedTokens == 6)
+    }
+
     @Test("请求走本地 11434 /v1 端点")
     func localEndpoint() async throws {
         let session = mockSession()

@@ -20,6 +20,8 @@ final class AppState {
     var taskPlan: TaskPlan = .empty
     /// 当前会话的上下文用量/压缩状态
     var contextState: SessionContextState = .empty
+    var usageStats: UsageStats = .zero
+    var lastRunUsage: LLMUsage = .zero
     /// 等待用户处理的审批请求
     var pendingApproval: ApprovalRequest?
     var pendingQuestion: ClarificationRequest?
@@ -176,6 +178,8 @@ final class AppState {
         messages = (try? store.loadMessages(threadID: threadID, persona: selectedPersona)) ?? []
         taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
         contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
+        usageStats = loadUsageStats()
+        lastRunUsage = .zero
         runs = (try? store.listRuns(
             threadID: threadID,
             persona: selectedPersona,
@@ -319,6 +323,9 @@ final class AppState {
         messages = []
         taskPlan = .empty
         contextState = .empty
+        usageStats = .zero
+        lastRunUsage = .zero
+        saveUsageStats()
         lastToolTrace = []
     }
 
@@ -491,6 +498,13 @@ final class AppState {
                 taskPlan = (try? store.loadTaskPlan(threadID: requestThread, persona: requestPersona)) ?? .empty
                 contextState = (try? store.loadContextState(threadID: requestThread, persona: requestPersona)) ?? .empty
             }
+            if requestThread == currentThreadID {
+                recordUsage(
+                    result.usage,
+                    modelCalls: result.modelCalls,
+                    toolCalls: result.trace.count
+                )
+            }
             touchSession(
                 userText: trimmed,
                 reply: result.reply,
@@ -602,6 +616,13 @@ final class AppState {
                 case .finished(let result):
                     stopTyping()
                     streamedReply = result.reply
+                    if requestThread == currentThreadID {
+                        recordUsage(
+                            result.usage,
+                            modelCalls: result.modelCalls,
+                            toolCalls: result.trace.count
+                        )
+                    }
                     updateAssistantMessage(id: placeholderID, text: result.reply)
                     if requestThread == currentThreadID {
                         lastToolTrace = result.trace
@@ -826,6 +847,38 @@ final class AppState {
                 self.errorMessage = "已生成技能提案: \(proposal.name)(在设置 → 技能中批准)"
             }
         }
+    }
+
+    // MARK: - AI 用量
+
+    private var usageKVKey: String { "usage.\(threadID)" }
+
+    private func loadUsageStats() -> UsageStats {
+        guard let value = try? store.getKV(key: usageKVKey),
+              let dict = value.value as? [String: Any],
+              let data = try? JSONSerialization.data(withJSONObject: dict),
+              let stats = try? JSONDecoder().decode(UsageStats.self, from: data)
+        else { return .zero }
+        return stats
+    }
+
+    private func saveUsageStats() {
+        guard let data = try? JSONEncoder().encode(usageStats),
+              let object = try? JSONSerialization.jsonObject(with: data)
+        else { return }
+        try? store.setKV(key: usageKVKey, value: AnyCodable(object))
+    }
+
+    func recordUsage(_ usage: LLMUsage, modelCalls: Int, toolCalls: Int) {
+        usageStats.record(usage, modelCalls: modelCalls, toolCalls: toolCalls)
+        lastRunUsage = usage
+        saveUsageStats()
+    }
+
+    func resetUsageStats() {
+        usageStats = .zero
+        lastRunUsage = .zero
+        saveUsageStats()
     }
 
     // MARK: - 插件市场

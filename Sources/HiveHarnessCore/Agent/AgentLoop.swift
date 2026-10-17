@@ -26,6 +26,10 @@ public struct AgentResult: Sendable, Equatable {
     public let trace: [ToolTrace]
     /// 实际成功响应的模型 id(回退后可能不是首选)
     public let activeModel: String
+    /// 本轮 token 用量(模型未返回 usage 时为估算值)
+    public let usage: LLMUsage
+    /// 本轮模型调用轮数(含工具循环)
+    public let modelCalls: Int
 
     public init(
         success: Bool,
@@ -34,7 +38,9 @@ public struct AgentResult: Sendable, Equatable {
         memories: [MemoryItem],
         engine: String,
         trace: [ToolTrace],
-        activeModel: String = ""
+        activeModel: String = "",
+        usage: LLMUsage = .zero,
+        modelCalls: Int = 1
     ) {
         self.success = success
         self.persona = persona
@@ -43,6 +49,8 @@ public struct AgentResult: Sendable, Equatable {
         self.engine = engine
         self.trace = trace
         self.activeModel = activeModel
+        self.usage = usage
+        self.modelCalls = modelCalls
     }
 }
 
@@ -451,10 +459,11 @@ public actor AgentLoop {
                     memories: session.memories,
                     engine: "local-fallback",
                     trace: [],
-                    activeModel: "local-fallback"
+                    activeModel: "local-fallback",
+                    modelCalls: 0
                 )
             case let .live(pool, registry, specs):
-                let (reply, traces, engine, activeModel) = try await runToolLoop(
+                let (reply, traces, engine, activeModel, usage, modelCalls) = try await runToolLoop(
                     session: session,
                     pool: pool,
                     registry: registry,
@@ -473,8 +482,10 @@ public actor AgentLoop {
                     status: .completed,
                     model: activeModel,
                     replyPreview: reply,
-                    promptTokens: promptTokens,
-                    completionTokens: TokenEstimator.estimate(reply)
+                    promptTokens: usage.promptTokens > 0 ? usage.promptTokens : promptTokens,
+                    completionTokens: usage.completionTokens > 0
+                        ? usage.completionTokens
+                        : TokenEstimator.estimate(reply)
                 ))
                 return AgentResult(
                     success: true,
@@ -483,7 +494,9 @@ public actor AgentLoop {
                     memories: session.memories,
                     engine: engine,
                     trace: traces,
-                    activeModel: activeModel
+                    activeModel: activeModel,
+                    usage: usage,
+                    modelCalls: modelCalls
                 )
             }
         } catch {
@@ -555,10 +568,11 @@ public actor AgentLoop {
                     memories: session.memories,
                     engine: "local-fallback",
                     trace: [],
-                    activeModel: "local-fallback"
+                    activeModel: "local-fallback",
+                    modelCalls: 0
                 )))
             case let .live(pool, registry, specs):
-                let (reply, traces, engine, activeModel) = try await runToolLoop(
+                let (reply, traces, engine, activeModel, usage, modelCalls) = try await runToolLoop(
                     session: session,
                     pool: pool,
                     registry: registry,
@@ -578,8 +592,10 @@ public actor AgentLoop {
                     status: .completed,
                     model: activeModel,
                     replyPreview: reply,
-                    promptTokens: promptTokens,
-                    completionTokens: TokenEstimator.estimate(reply)
+                    promptTokens: usage.promptTokens > 0 ? usage.promptTokens : promptTokens,
+                    completionTokens: usage.completionTokens > 0
+                        ? usage.completionTokens
+                        : TokenEstimator.estimate(reply)
                 ))
                 if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
                 yield(.finished(AgentResult(
@@ -589,7 +605,9 @@ public actor AgentLoop {
                     memories: session.memories,
                     engine: engine,
                     trace: traces,
-                    activeModel: activeModel
+                    activeModel: activeModel,
+                    usage: usage,
+                    modelCalls: modelCalls
                 )))
             }
         } catch {
@@ -609,7 +627,14 @@ public actor AgentLoop {
         specs: [ToolSpec],
         yield: (@Sendable (AgentStreamEvent) -> Void)?,
         recorder: RunRecorder
-    ) async throws -> (reply: String, traces: [ToolTrace], engine: String, activeModel: String) {
+    ) async throws -> (
+        reply: String,
+        traces: [ToolTrace],
+        engine: String,
+        activeModel: String,
+        usage: LLMUsage,
+        modelCalls: Int
+    ) {
         guard let primary = pool.entries.first else {
             throw LLMError.invalidResponse
         }
@@ -620,6 +645,8 @@ public actor AgentLoop {
         var lastPlan = session.plan
         var lastContext: SessionContextState?
         var activeModel = primary.id
+        var usage = LLMUsage.zero
+        var modelCalls = 0
         let contextManager = ContextManager(
             store: store,
             contextWindow: pool.contextWindow,
@@ -655,8 +682,9 @@ public actor AgentLoop {
 
             let text: String
             let toolCalls: [ToolCall]
+            let callUsage: LLMUsage
             if streaming {
-                (text, toolCalls, activeModel) = try await streamWithFallback(
+                (text, toolCalls, activeModel, callUsage) = try await streamWithFallback(
                     pool: pool,
                     messages: requestMessages,
                     specs: specs,
@@ -671,7 +699,13 @@ public actor AgentLoop {
                 text = response.content
                 toolCalls = response.toolCalls
                 activeModel = modelID
+                callUsage = response.usage ?? Self.estimateUsage(
+                    messages: requestMessages,
+                    completion: text
+                )
             }
+            usage = usage + callUsage
+            modelCalls += 1
             recorder.add(
                 .model,
                 title: activeModel,
@@ -681,7 +715,14 @@ public actor AgentLoop {
             )
 
             if toolCalls.isEmpty {
-                return (text, traces, streaming ? "tool-stream" : "tool-loop", activeModel)
+                return (
+                    text,
+                    traces,
+                    streaming ? "tool-stream" : "tool-loop",
+                    activeModel,
+                    usage,
+                    modelCalls
+                )
             }
 
             // 回填 assistant 工具调用消息
@@ -716,7 +757,7 @@ public actor AgentLoop {
         let limitText = "工具调用轮次过多,已停止。请把问题拆小后再试。"
         recorder.add(.error, title: "轮次上限", detail: limitText, ok: false)
         yield?(.limitReached(limitText))
-        return (limitText, traces, "tool-loop-limit", activeModel)
+        return (limitText, traces, "tool-loop-limit", activeModel, usage, modelCalls)
     }
 
     /// 非流式请求:按模型组顺序回退,返回实际成功的模型 id。
@@ -745,11 +786,17 @@ public actor AgentLoop {
         messages: [ChatMessage],
         specs: [ToolSpec],
         yield: (@Sendable (AgentStreamEvent) -> Void)?
-    ) async throws -> (text: String, toolCalls: [ToolCall], modelID: String) {
+    ) async throws -> (
+        text: String,
+        toolCalls: [ToolCall],
+        modelID: String,
+        usage: LLMUsage
+    ) {
         var lastError: Error?
         for entry in pool.entries {
             var text = ""
             var toolCalls: [ToolCall] = []
+            var usage = LLMUsage.zero
             var emitted = false
             do {
                 for try await chunk in entry.client.stream(messages: messages, tools: specs) {
@@ -764,8 +811,14 @@ public actor AgentLoop {
                     if let calls = chunk.toolCallAccumulator {
                         toolCalls = calls
                     }
+                    if let chunkUsage = chunk.usage {
+                        usage = usage + chunkUsage
+                    }
                 }
-                return (text, toolCalls, entry.id)
+                if usage.totalTokens == 0 {
+                    usage = Self.estimateUsage(messages: messages, completion: text)
+                }
+                return (text, toolCalls, entry.id, usage)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -774,6 +827,14 @@ public actor AgentLoop {
             }
         }
         throw lastError ?? LLMError.invalidResponse
+    }
+
+    private static func estimateUsage(messages: [ChatMessage], completion: String) -> LLMUsage {
+        let prompt = messages.map(\.content.plainText).joined(separator: "\n")
+        return LLMUsage(
+            promptTokens: TokenEstimator.estimate(prompt),
+            completionTokens: TokenEstimator.estimate(completion)
+        )
     }
 
     /// 执行单个工具调用,统一产出轨迹与回填消息。

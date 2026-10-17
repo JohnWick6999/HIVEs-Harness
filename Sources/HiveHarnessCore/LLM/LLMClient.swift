@@ -162,16 +162,59 @@ public struct AnyCodable: Codable, @unchecked Sendable, Equatable {
 
 // MARK: - 响应类型
 
+/// 一次模型调用的 token 用量(兼容 OpenAI / DeepSeek 的缓存字段)。
+public struct LLMUsage: Codable, Sendable, Equatable {
+    public var promptTokens: Int
+    public var completionTokens: Int
+    public var totalTokens: Int
+    /// 命中缓存的 prompt token(无该字段时为 0)。
+    public var cachedTokens: Int
+
+    public init(
+        promptTokens: Int = 0,
+        completionTokens: Int = 0,
+        totalTokens: Int? = nil,
+        cachedTokens: Int = 0
+    ) {
+        self.promptTokens = promptTokens
+        self.completionTokens = completionTokens
+        self.totalTokens = totalTokens ?? (promptTokens + completionTokens)
+        self.cachedTokens = cachedTokens
+    }
+
+    public static let zero = LLMUsage()
+
+    public var cacheHitRate: Double {
+        promptTokens > 0 ? min(1, max(0, Double(cachedTokens) / Double(promptTokens))) : 0
+    }
+
+    public static func + (lhs: LLMUsage, rhs: LLMUsage) -> LLMUsage {
+        LLMUsage(
+            promptTokens: lhs.promptTokens + rhs.promptTokens,
+            completionTokens: lhs.completionTokens + rhs.completionTokens,
+            totalTokens: lhs.totalTokens + rhs.totalTokens,
+            cachedTokens: lhs.cachedTokens + rhs.cachedTokens
+        )
+    }
+}
+
 /// 单轮完成的响应。
 public struct LLMResponse: Sendable, Equatable {
     public var content: String
     public var toolCalls: [ToolCall]
     public var finishReason: String?
+    public var usage: LLMUsage?
 
-    public init(content: String, toolCalls: [ToolCall] = [], finishReason: String? = nil) {
+    public init(
+        content: String,
+        toolCalls: [ToolCall] = [],
+        finishReason: String? = nil,
+        usage: LLMUsage? = nil
+    ) {
         self.content = content
         self.toolCalls = toolCalls
         self.finishReason = finishReason
+        self.usage = usage
     }
 }
 
@@ -180,11 +223,18 @@ public struct LLMStreamChunk: Sendable, Equatable {
     public var delta: String
     public var toolCallAccumulator: [ToolCall]?
     public var finishReason: String?
+    public var usage: LLMUsage?
 
-    public init(delta: String, toolCallAccumulator: [ToolCall]? = nil, finishReason: String? = nil) {
+    public init(
+        delta: String,
+        toolCallAccumulator: [ToolCall]? = nil,
+        finishReason: String? = nil,
+        usage: LLMUsage? = nil
+    ) {
         self.delta = delta
         self.toolCallAccumulator = toolCallAccumulator
         self.finishReason = finishReason
+        self.usage = usage
     }
 }
 
