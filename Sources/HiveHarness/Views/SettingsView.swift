@@ -4,14 +4,18 @@ import HiveHarnessCore
 struct SettingsView: View {
     @Environment(AppState.self) private var state
     @State private var section: Section = .models
+    @AppStorage(HiveTheme.appearanceKey) private var appearance = HiveAppearance.system.rawValue
+    @AppStorage(HiveTheme.glassIntensityKey) private var glassIntensity = HiveTheme.defaultGlassIntensity
+    @AppStorage(HiveTheme.sidebarWidthKey) private var sidebarWidth = HiveTheme.defaultSidebarWidth
 
     enum Section: String, CaseIterable, Identifiable {
-        case models, agent, personas, mcp, skills, gateway, memory, about
+        case appearance, models, agent, personas, mcp, skills, gateway, memory, about
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
+            case .appearance: return "外观"
             case .models: return "模型"
             case .agent: return "Agent"
             case .personas: return "人格"
@@ -25,6 +29,7 @@ struct SettingsView: View {
 
         var icon: String {
             switch self {
+            case .appearance: return "paintpalette"
             case .models: return "cpu"
             case .agent: return "gearshape.2"
             case .personas: return "person.2"
@@ -52,6 +57,7 @@ struct SettingsView: View {
         }
         .frame(width: 940, height: 700)
         .tint(HiveTheme.amberDeep)
+        .preferredColorScheme(HiveAppearance(rawValue: appearance)?.colorScheme)
     }
 
     private var sidebar: some View {
@@ -109,6 +115,8 @@ struct SettingsView: View {
     @ViewBuilder
     private var content: some View {
         switch section {
+        case .appearance:
+            appearanceSettings
         case .models:
             ModelsSettingsView()
         case .agent:
@@ -125,6 +133,109 @@ struct SettingsView: View {
             memorySettings
         case .about:
             aboutSettings
+        }
+    }
+
+    // MARK: - 外观
+
+    private var appearanceSettings: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("外观")
+                    .font(.title2.weight(.bold))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("主题")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Picker("主题", selection: $appearance) {
+                        ForEach(HiveAppearance.allCases) { item in
+                            Text(item.title).tag(item.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                .hiveCard(padding: 14)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("液态玻璃强度")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(Int((glassIntensity * 100).rounded()))%")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(HiveTheme.amberDeep)
+                    }
+                    Slider(value: $glassIntensity, in: 0...1)
+                        .tint(HiveTheme.amberDeep)
+                    HStack {
+                        Text("轻")
+                        Spacer()
+                        Text("Apple 桌面卡片")
+                        Spacer()
+                        Text("强")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    Text("0.55 接近 Apple 桌面卡片强度;调高会增加高光与折射,不影响正文对比度。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .hiveCard(padding: 14)
+
+                ZStack {
+                    HiveBackground()
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack {
+                            HiveMark(size: 26)
+                            Text("实时玻璃预览")
+                                .font(.headline)
+                            Spacer()
+                        }
+                        Text("这是一段正文。调节强度时,卡片的高光、边缘折射和阴影会实时变化。")
+                            .font(.callout)
+                            .foregroundStyle(.primary)
+                        Text("正文保持不透明,玻璃只作用于背景层。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .hiveCard(padding: 18, corner: 18)
+                    .padding(18)
+                }
+                .frame(height: 180)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(HiveTheme.hairline, lineWidth: 1)
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("侧栏宽度")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(Int(sidebarWidth)) pt")
+                            .font(.caption.monospacedDigit())
+                    }
+                    Slider(value: $sidebarWidth, in: 200...360)
+                        .tint(HiveTheme.amberDeep)
+                    Text("也可以直接拖动侧栏右边缘调整,宽度会自动保存。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .hiveCard(padding: 14)
+
+                Button("恢复默认外观") {
+                    appearance = HiveAppearance.system.rawValue
+                    glassIntensity = HiveTheme.defaultGlassIntensity
+                    sidebarWidth = HiveTheme.defaultSidebarWidth
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.trailing, 8)
         }
     }
 

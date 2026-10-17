@@ -17,8 +17,14 @@ struct SidebarView: View {
     @State private var renameID: String?
     @State private var renameDraft = ""
     @State private var deleteID: String?
+    @State private var dragStartWidth: Double?
+    @AppStorage(HiveTheme.sidebarWidthKey) private var sidebarWidth = HiveTheme.defaultSidebarWidth
 
-    private var width: CGFloat { expanded ? 240 : 68 }
+    private var expandedWidth: CGFloat {
+        CGFloat(min(360, max(200, sidebarWidth)))
+    }
+
+    private var width: CGFloat { expanded ? expandedWidth : 68 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -41,9 +47,40 @@ struct SidebarView: View {
         .frame(maxHeight: .infinity)
         .hiveGlass(corner: 0, tint: HiveTheme.amber.opacity(0.025))
         .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(HiveTheme.hairline)
-                .frame(width: 1)
+            ZStack {
+                Rectangle()
+                    .fill(HiveTheme.hairline)
+                    .frame(width: 1)
+                if expanded {
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 8)
+                        .contentShape(Rectangle())
+                        .onHover { inside in
+                            if inside {
+                                NSCursor.resizeLeftRight.set()
+                            } else if dragStartWidth == nil {
+                                NSCursor.arrow.set()
+                            }
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if dragStartWidth == nil {
+                                        dragStartWidth = sidebarWidth
+                                    }
+                                    let start = dragStartWidth ?? sidebarWidth
+                                    sidebarWidth = min(360, max(200, start + value.translation.width))
+                                }
+                                .onEnded { _ in
+                                    dragStartWidth = nil
+                                    NSCursor.arrow.set()
+                                }
+                        )
+                        .help("拖动调整侧栏宽度")
+                }
+            }
+            .frame(width: 8)
         }
         .animation(.easeInOut(duration: 0.18), value: expanded)
     }
