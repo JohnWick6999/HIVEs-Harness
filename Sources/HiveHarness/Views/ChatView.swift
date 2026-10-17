@@ -112,7 +112,7 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(.quaternary.opacity(0.5), in: Capsule())
+                .hiveGlass(corner: 999, tint: HiveTheme.amber.opacity(0.04), interactive: true)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -545,16 +545,23 @@ struct ChatView: View {
     ]
 
     private var toolTraceRow: some View {
-        HStack(spacing: 6) {
+        let summary = ToolTraceSummary.grouped(state.lastToolTrace)
+        return HStack(spacing: 6) {
             Image(systemName: "wrench.and.screwdriver")
                 .foregroundStyle(HiveTheme.amberDeep)
-            Text("调用了 \(state.lastToolTrace.count) 个工具:\(state.lastToolTrace.map(\.tool).joined(separator: ", "))")
+            Text("调用了 \(summary.count) 个工具")
+                .fontWeight(.medium)
+            if !summary.isEmpty {
+                Text(summary.map { item in
+                    item.count > 1 ? "\(item.name) ×\(item.count)" : item.name
+                }.joined(separator: " · "))
+                    .foregroundStyle(.secondary)
+            }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(HiveTheme.card, in: Capsule())
+        .hiveGlass(corner: 999, tint: HiveTheme.amber.opacity(0.05))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -597,13 +604,10 @@ struct ChatView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(
-                Color(nsColor: .controlBackgroundColor).opacity(0.62),
-                in: RoundedRectangle(cornerRadius: HiveTheme.composerCorner, style: .continuous)
-            )
-            .background(
-                .regularMaterial,
-                in: RoundedRectangle(cornerRadius: HiveTheme.composerCorner, style: .continuous)
+            .hiveGlass(
+                corner: HiveTheme.composerCorner,
+                tint: HiveTheme.amber.opacity(0.055),
+                interactive: true
             )
             .overlay(
                 RoundedRectangle(cornerRadius: HiveTheme.composerCorner, style: .continuous)

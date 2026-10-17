@@ -31,9 +31,7 @@ struct CodeChangeBadge: View {
             .font(.caption2)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().stroke(HiveTheme.hairline, lineWidth: 1))
-            .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+            .hiveGlass(corner: 999, tint: HiveTheme.amber.opacity(0.06), interactive: true)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

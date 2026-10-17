@@ -42,6 +42,23 @@ struct HiveBackground: View {
                 startRadius: 40,
                 endRadius: 720
             )
+            RadialGradient(
+                colors: [HiveTheme.amber.opacity(0.075), .clear],
+                center: .topTrailing,
+                startRadius: 30,
+                endRadius: 520
+            )
+            RadialGradient(
+                colors: [Color.cyan.opacity(0.035), .clear],
+                center: .bottomLeading,
+                startRadius: 80,
+                endRadius: 460
+            )
+            LinearGradient(
+                colors: [.white.opacity(0.035), .clear, .black.opacity(0.025)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
         .ignoresSafeArea()
     }
@@ -73,17 +90,77 @@ struct HiveCardModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(padding)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(HiveTheme.hairline, lineWidth: 1)
-            )
+            .hiveGlass(corner: corner)
+    }
+}
+
+/// Apple Liquid Glass(macOS 26+);旧系统回退为材质 + 高光/边缘折射。
+struct HiveGlassModifier: ViewModifier {
+    var corner: CGFloat
+    var tint: Color?
+    var interactive: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            let glass: Glass = {
+                var value = Glass.regular
+                if let tint { value = value.tint(tint) }
+                if interactive { value = value.interactive() }
+                return value
+            }()
+            content
+                .glassEffect(glass, in: RoundedRectangle(cornerRadius: corner, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.34), .white.opacity(0.06), .black.opacity(0.10)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.8
+                        )
+                        .allowsHitTesting(false)
+                )
+        } else {
+            let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
+            content
+                .background(.ultraThinMaterial, in: shape)
+                .background(
+                    LinearGradient(
+                        colors: [.white.opacity(0.08), .clear, HiveTheme.amber.opacity(0.035)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: shape
+                )
+                .overlay(
+                    shape.stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.30), HiveTheme.hairline, .black.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.8
+                    )
+                )
+                .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+        }
     }
 }
 
 extension View {
     func hiveCard(padding: CGFloat = 12, corner: CGFloat = HiveTheme.corner) -> some View {
         modifier(HiveCardModifier(padding: padding, corner: corner))
+    }
+
+    func hiveGlass(
+        corner: CGFloat = HiveTheme.corner,
+        tint: Color? = nil,
+        interactive: Bool = false
+    ) -> some View {
+        modifier(HiveGlassModifier(corner: corner, tint: tint, interactive: interactive))
     }
 }
 
