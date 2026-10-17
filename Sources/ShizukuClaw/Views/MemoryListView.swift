@@ -33,9 +33,26 @@ struct MemoryListView: View {
                 List {
                     ForEach(state.memories) { memory in
                         HStack(alignment: .top, spacing: 8) {
-                            Text(memory.content)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(memory.content)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                HStack(spacing: 8) {
+                                    Text(sourceLabel(memory.sourceKind))
+                                    if let thread = memory.sourceThread, !thread.isEmpty {
+                                        Text("会话 \(thread.prefix(12))")
+                                    }
+                                    Text("置信 \(Int(memory.confidence * 100))%")
+                                    if memory.useCount > 0 {
+                                        Text("检索 \(memory.useCount) 次")
+                                    }
+                                    if let last = memory.lastUsedAt, !last.isEmpty {
+                                        Text("最近 \(last.prefix(16))")
+                                    }
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            }
                             Text(String(memory.createdAt.prefix(16)))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
@@ -60,5 +77,13 @@ struct MemoryListView: View {
     private func add() {
         state.addMemory(newMemory)
         newMemory = ""
+    }
+
+    private func sourceLabel(_ kind: String) -> String {
+        switch kind {
+        case "auto": return "自动记录"
+        case "tool": return "工具写入"
+        default: return "手动添加"
+        }
     }
 }

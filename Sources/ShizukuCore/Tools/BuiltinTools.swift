@@ -202,18 +202,28 @@ public enum BuiltinTools {
         )
         private let store: SQLiteStore
         private let persona: String
+        private let threadID: String?
 
-        public init(store: SQLiteStore, persona: String) {
+        public init(store: SQLiteStore, persona: String, threadID: String? = nil) {
             self.store = store
             self.persona = persona
+            self.threadID = threadID
         }
 
         public func run(arguments: [String: AnyCodable]) throws -> ToolResult {
             let content = arguments["content"]?.value as? String ?? ""
-            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
                 return ToolResult(text: "记忆内容为空。")
             }
-            _ = try store.addMemory(persona: persona, content: content, kind: "long_term")
+            _ = try store.addMemory(
+                persona: persona,
+                content: trimmed,
+                kind: "long_term",
+                sourceThread: threadID,
+                sourceKind: "tool",
+                confidence: 0.8
+            )
             return ToolResult(text: "已写入长期记忆。")
         }
     }

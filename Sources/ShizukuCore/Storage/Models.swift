@@ -27,6 +27,16 @@ public struct MemoryItem: Codable, Sendable, Equatable, Identifiable {
     /// 检索时的相似度得分(非检索场景为 nil)
     public let score: Double?
     public let createdAt: String
+    /// 来源会话(自动记忆/工具写入时记录)
+    public let sourceThread: String?
+    /// auto / tool / manual
+    public let sourceKind: String
+    /// 置信度 0-1
+    public let confidence: Double
+    /// 被检索注入的次数
+    public let useCount: Int
+    /// 最近一次被检索的时间
+    public let lastUsedAt: String?
 
     public init(
         id: Int64,
@@ -35,7 +45,12 @@ public struct MemoryItem: Codable, Sendable, Equatable, Identifiable {
         content: String,
         metadata: [String: AnyCodable]?,
         score: Double? = nil,
-        createdAt: String
+        createdAt: String,
+        sourceThread: String? = nil,
+        sourceKind: String = "manual",
+        confidence: Double = 0.6,
+        useCount: Int = 0,
+        lastUsedAt: String? = nil
     ) {
         self.id = id
         self.persona = persona
@@ -44,6 +59,11 @@ public struct MemoryItem: Codable, Sendable, Equatable, Identifiable {
         self.metadata = metadata
         self.score = score
         self.createdAt = createdAt
+        self.sourceThread = sourceThread
+        self.sourceKind = sourceKind
+        self.confidence = confidence
+        self.useCount = useCount
+        self.lastUsedAt = lastUsedAt
     }
 }
 

@@ -866,7 +866,7 @@ final class AppState {
     func addMemory(_ content: String) {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try? store.addMemory(persona: selectedPersona, content: trimmed, kind: "long_term")
+        try? store.addMemory(persona: selectedPersona, content: trimmed, kind: "long_term", sourceKind: "manual", confidence: 1.0)
         loadMemories()
     }
 

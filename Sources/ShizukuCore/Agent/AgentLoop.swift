@@ -352,7 +352,11 @@ public actor AgentLoop {
             BuiltinTools.ReadFileTool(workspace: workspace, policy: policy),
             BuiltinTools.WriteFileTool(workspace: workspace, policy: policy),
             BuiltinTools.SearchMemoryTool(store: store, persona: session.persona),
-            BuiltinTools.AddMemoryTool(store: store, persona: session.persona),
+            BuiltinTools.AddMemoryTool(
+                store: store,
+                persona: session.persona,
+                threadID: session.threadID
+            ),
             TaskPlanTools.TodoWriteTool(
                 store: store,
                 threadID: session.threadID,
@@ -854,7 +858,14 @@ public actor AgentLoop {
         try? store.addChatRecord(persona: session.persona, role: "user", content: session.userText, threadID: session.threadID)
         try? store.addChatRecord(persona: session.persona, role: "assistant", content: reply, threadID: session.threadID)
         if session.userText.count >= autoMemoryThreshold {
-            try? store.addMemory(persona: session.persona, content: session.userText, kind: "long_term")
+            try? store.addMemory(
+                persona: session.persona,
+                content: session.userText,
+                kind: "long_term",
+                sourceThread: session.threadID,
+                sourceKind: "auto",
+                confidence: 0.5
+            )
         }
     }
 

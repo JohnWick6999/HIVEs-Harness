@@ -14,7 +14,7 @@
 |---|---|---|
 | 💬 流式聊天 | 字符级打字动画,SSE 流式输出 | ✅ |
 | 🐱 人格系统 | 5 个内置人格(小雫/azuma/selena/Yukikaze/ui),对话历史按人格隔离 | ✅ |
-| 🧠 长期记忆 | SQLite 存储 + 哈希向量余弦检索,聊天自动记忆(≥12 字),可视化管理页 | ✅ |
+| 🧠 长期记忆 | SQLite + 哈希向量检索;自动记忆(≥12 字);来源会话/工具、置信度、检索次数可审计 | ✅ |
 | 🔧 工具调用 | 文件读写(工作区沙箱)、记忆检索/写入、本地 Agent CLI(macOS) | ✅ |
 | ✅ 任务计划 | todowrite/todoread,计划持久化 + 实时进度面板,运行绑定防跨轮串写 | ✅ |
 | 🗂️ 多会话 | 会话列表 / 新建 / 撤销上一轮 / 分叉 / 清空 / 删除,按人格隔离,旧历史自动迁移 | ✅ |
@@ -70,7 +70,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,133 项用例覆盖全部核心模块
+- 测试:swift-testing,137 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

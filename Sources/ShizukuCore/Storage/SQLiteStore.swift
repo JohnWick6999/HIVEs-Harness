@@ -73,7 +73,12 @@ public final class SQLiteStore: @unchecked Sendable {
                 content TEXT NOT NULL,
                 metadata TEXT,
                 embedding TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                source_thread TEXT,
+                source_kind TEXT NOT NULL DEFAULT 'manual',
+                confidence REAL NOT NULL DEFAULT 0.6,
+                use_count INTEGER NOT NULL DEFAULT 0,
+                last_used_at TEXT
             );
             CREATE TABLE IF NOT EXISTS checkpoints (
                 thread_id TEXT NOT NULL,
@@ -126,6 +131,20 @@ public final class SQLiteStore: @unchecked Sendable {
         let columns = try queryLocked("PRAGMA table_info(chat_records)")
         if !columns.contains(where: { textValue($0["name"] ?? "") == "thread_id" }) {
             try execLocked("ALTER TABLE chat_records ADD COLUMN thread_id TEXT")
+        }
+
+        // 旧库补齐记忆溯源字段
+        let memoryColumns = try queryLocked("PRAGMA table_info(memories)")
+        let memoryNames = Set(memoryColumns.map { textValue($0["name"] ?? "") })
+        let additions: [(String, String)] = [
+            ("source_thread", "TEXT"),
+            ("source_kind", "TEXT NOT NULL DEFAULT 'manual'"),
+            ("confidence", "REAL NOT NULL DEFAULT 0.6"),
+            ("use_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_used_at", "TEXT"),
+        ]
+        for (name, definition) in additions where !memoryNames.contains(name) {
+            try execLocked("ALTER TABLE memories ADD COLUMN \(name) \(definition)")
         }
     }
 
@@ -320,7 +339,10 @@ public final class SQLiteStore: @unchecked Sendable {
         persona: String,
         content: String,
         kind: String = "long_term",
-        metadata: [String: AnyCodable]? = nil
+        metadata: [String: AnyCodable]? = nil,
+        sourceThread: String? = nil,
+        sourceKind: String = "manual",
+        confidence: Double = 0.6
     ) throws -> Int64 {
         let embedding = TextEmbedding.hashVector(content)
         let embeddingJSON = try encodeJSON(embedding)
@@ -328,15 +350,30 @@ public final class SQLiteStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return try executeLocked(
-            "INSERT INTO memories(persona, kind, content, metadata, embedding, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            [.text(persona), .text(kind), .text(content), .text(metadataJSON), .text(embeddingJSON), .text(now())]
+            """
+            INSERT INTO memories(
+                persona, kind, content, metadata, embedding, created_at,
+                source_thread, source_kind, confidence, use_count, last_used_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+            """,
+            [
+                .text(persona),
+                .text(kind),
+                .text(content),
+                .text(metadataJSON),
+                .text(embeddingJSON),
+                .text(now()),
+                .text(sourceThread ?? ""),
+                .text(sourceKind),
+                .real(confidence),
+            ]
         )
     }
 
     public func listMemories(persona: String? = nil, kind: String? = nil, limit: Int = 50) throws -> [MemoryItem] {
         lock.lock()
         defer { lock.unlock() }
-        var sql = "SELECT id, persona, kind, content, metadata, created_at FROM memories"
+        var sql = "SELECT id, persona, kind, content, metadata, created_at, source_thread, source_kind, confidence, use_count, last_used_at FROM memories"
         var values: [SQLiteValue] = []
         var conditions: [String] = []
         if let persona {
@@ -361,7 +398,12 @@ public final class SQLiteStore: @unchecked Sendable {
                 kind: textValue(row["kind"] ?? ""),
                 content: textValue(row["content"] ?? ""),
                 metadata: decodeJSONDict(textValue(row["metadata"] ?? "{}")),
-                createdAt: textValue(row["created_at"] ?? "")
+                createdAt: textValue(row["created_at"] ?? ""),
+                sourceThread: textValue(row["source_thread"] ?? "").isEmpty ? nil : textValue(row["source_thread"] ?? ""),
+                sourceKind: textValue(row["source_kind"] ?? "manual"),
+                confidence: (row["confidence"] as? Double) ?? 0.6,
+                useCount: Int(intValue(row["use_count"] ?? 0)),
+                lastUsedAt: textValue(row["last_used_at"] ?? "").isEmpty ? nil : textValue(row["last_used_at"] ?? "")
             )
         }
     }
@@ -388,7 +430,7 @@ public final class SQLiteStore: @unchecked Sendable {
         let queryVector = TextEmbedding.hashVector(query)
         lock.lock()
         defer { lock.unlock() }
-        var sql = "SELECT id, persona, kind, content, metadata, embedding, created_at FROM memories"
+        var sql = "SELECT id, persona, kind, content, metadata, embedding, created_at, source_thread, source_kind, confidence, use_count, last_used_at FROM memories"
         var values: [SQLiteValue] = []
         if let persona {
             sql += " WHERE persona = ?"
@@ -409,10 +451,23 @@ public final class SQLiteStore: @unchecked Sendable {
                 content: textValue(row["content"] ?? ""),
                 metadata: decodeJSONDict(textValue(row["metadata"] ?? "{}")),
                 score: score,
-                createdAt: textValue(row["created_at"] ?? "")
+                createdAt: textValue(row["created_at"] ?? ""),
+                sourceThread: textValue(row["source_thread"] ?? "").isEmpty ? nil : textValue(row["source_thread"] ?? ""),
+                sourceKind: textValue(row["source_kind"] ?? "manual"),
+                confidence: (row["confidence"] as? Double) ?? 0.6,
+                useCount: Int(intValue(row["use_count"] ?? 0)),
+                lastUsedAt: textValue(row["last_used_at"] ?? "").isEmpty ? nil : textValue(row["last_used_at"] ?? "")
             )
         }
-        return scored.sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(topK).map { $0 }
+        let result = scored.sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(topK).map { $0 }
+        let timestamp = now()
+        for item in result {
+            _ = try? executeLocked(
+                "UPDATE memories SET use_count = use_count + 1, last_used_at = ? WHERE id = ?",
+                [.text(timestamp), .integer(item.id)]
+            )
+        }
+        return result
     }
 
     // MARK: - 检查点
