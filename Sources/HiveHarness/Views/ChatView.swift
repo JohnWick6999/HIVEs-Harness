@@ -391,7 +391,7 @@ struct ChatView: View {
             }
         }
         .padding(14)
-        .frame(width: 350)
+        .frame(width: 380)
     }
 
     // MARK: - 任务计划
@@ -783,13 +783,13 @@ struct ChatView: View {
                         .foregroundStyle(reasoningColor(state.config.agent.reasoningEffort))
                 }
                 CometReasoningSlider(effort: reasoningBinding)
-                Text("等级越高,推理越深入;彗尾颜色和长度随等级变化。")
+                Text("等级越高,推理越深入;轨道流光、彗尾和环绕粒子随等级增强。")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
         .padding(14)
-        .frame(width: 350)
+        .frame(width: 380)
         .background(HiveBackground())
     }
 
