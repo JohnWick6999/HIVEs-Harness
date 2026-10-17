@@ -95,8 +95,10 @@ struct ReasoningControl: View {
 
     private func pulse() {
         burst = true
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) {
-            burst = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) {
+                burst = false
+            }
         }
     }
 }
