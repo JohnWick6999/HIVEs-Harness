@@ -30,6 +30,11 @@ final class AppState {
     var pendingDraft: String?
     /// 已安装技能(内置 + 用户)
     var skills: [Skill] = []
+    /// 本地 OpenAI 兼容网关
+    var gatewayRunning = false
+    var gatewayPort: Int?
+    var gatewayError: String?
+    private var gatewayServer: LocalGateway?
 
     // MARK: - 依赖
 
@@ -104,6 +109,12 @@ final class AppState {
 
         loadSessions()
         skills = skillStore.all()
+
+        if config.gateway.enabled {
+            Task { [weak self] in
+                await self?.startGateway()
+            }
+        }
     }
 
     var threadID: String {
@@ -596,6 +607,87 @@ final class AppState {
         let skill = try skillStore.install(from: url)
         skills = skillStore.all()
         return skill
+    }
+
+    // MARK: - 本地网关
+
+    var gatewayBaseURL: String {
+        "http://127.0.0.1:\(gatewayPort ?? config.gateway.port)/v1"
+    }
+
+    func startGateway() async {
+        guard !gatewayRunning else { return }
+        let normalized = config.normalized()
+        let modelIDs = normalized.models.keys.sorted()
+        let token = normalized.gateway.token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let router = GatewayRouter(
+            models: { modelIDs },
+            token: token.isEmpty ? nil : token,
+            chat: { [weak self] request in
+                guard let self else {
+                    return GatewayChatResult(reply: "App 已退出", model: "unavailable")
+                }
+                return await self.handleGatewayChat(request)
+            }
+        )
+        let server = LocalGateway(router: router)
+        do {
+            let port = try await server.start(port: UInt16(clamping: normalized.gateway.port))
+            gatewayServer = server
+            gatewayPort = Int(port)
+            gatewayRunning = true
+            gatewayError = nil
+            config.gateway.enabled = true
+            saveConfig()
+        } catch {
+            gatewayError = error.localizedDescription
+            gatewayRunning = false
+            gatewayPort = nil
+        }
+    }
+
+    func stopGateway() async {
+        await gatewayServer?.stop()
+        gatewayServer = nil
+        gatewayRunning = false
+        gatewayPort = nil
+        config.gateway.enabled = false
+        saveConfig()
+    }
+
+    /// 网关请求:独立会话,外部写入/执行一律拒绝审批。
+    private func handleGatewayChat(_ request: GatewayChatRequest) async -> GatewayChatResult {
+        let persona = request.persona ?? config.gateway.defaultPersona
+        let thread = request.threadID ?? ("gateway_" + UUID().uuidString.lowercased())
+        let mcpTools = await loadMCPTools()
+        let loop = AgentLoop(
+            store: store,
+            config: config,
+            keychain: keychain,
+            personas: personas,
+            workspace: workspace,
+            approvalHandler: { _ in .reject },
+            extraTools: mcpTools + skillTools
+        )
+        do {
+            let result = try await loop.invoke(
+                message: request.message,
+                persona: persona,
+                threadID: thread
+            )
+            let model = result.activeModel.isEmpty ? config.llm.model : result.activeModel
+            return GatewayChatResult(
+                reply: result.reply,
+                model: model,
+                promptTokens: TokenEstimator.estimate(request.message),
+                completionTokens: TokenEstimator.estimate(result.reply)
+            )
+        } catch {
+            return GatewayChatResult(
+                reply: "网关调用失败: \(error.localizedDescription)",
+                model: "error"
+            )
+        }
     }
 
     /// 清空当前对话(仅内存,历史仍保留在 checkpoint 中可刷新恢复)

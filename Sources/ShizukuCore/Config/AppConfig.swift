@@ -86,6 +86,29 @@ public struct AppConfig: Codable, Sendable, Equatable {
         }
     }
 
+    public struct Gateway: Codable, Sendable, Equatable {
+        /// 是否随 App 启动
+        public var enabled: Bool
+        /// 监听端口(仅 127.0.0.1)
+        public var port: Int
+        /// 可选 Bearer Token;空表示不校验
+        public var token: String
+        /// 未指定 persona 时使用
+        public var defaultPersona: String
+
+        public init(
+            enabled: Bool = false,
+            port: Int = 8_788,
+            token: String = "",
+            defaultPersona: String = "shizuku"
+        ) {
+            self.enabled = enabled
+            self.port = port
+            self.token = token
+            self.defaultPersona = defaultPersona
+        }
+    }
+
     public var llm: LLM
     public var agent: Agent
     /// 多提供商 / 多模型 / 回退组(旧配置为空时由 normalized() 自动迁移)
@@ -93,6 +116,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
     public var models: [String: ModelConfig]
     public var modelGroups: [String: ModelGroup]
     public var defaultModelGroup: String
+    /// 本地 OpenAI 兼容网关
+    public var gateway: Gateway
 
     public static let `default` = AppConfig()
 
@@ -102,7 +127,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
         providers: [String: ProviderConfig] = [:],
         models: [String: ModelConfig] = [:],
         modelGroups: [String: ModelGroup] = [:],
-        defaultModelGroup: String = "default"
+        defaultModelGroup: String = "default",
+        gateway: Gateway = .init()
     ) {
         self.llm = llm
         self.agent = agent
@@ -110,10 +136,11 @@ public struct AppConfig: Codable, Sendable, Equatable {
         self.models = models
         self.modelGroups = modelGroups
         self.defaultModelGroup = defaultModelGroup
+        self.gateway = gateway
     }
 
     private enum CodingKeys: String, CodingKey {
-        case llm, agent, providers, models, modelGroups, defaultModelGroup
+        case llm, agent, providers, models, modelGroups, defaultModelGroup, gateway
     }
 
     /// 兼容旧配置:新增字段缺失时使用默认值,避免整份配置解码失败。
@@ -125,6 +152,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         models = try container.decodeIfPresent([String: ModelConfig].self, forKey: .models) ?? [:]
         modelGroups = try container.decodeIfPresent([String: ModelGroup].self, forKey: .modelGroups) ?? [:]
         defaultModelGroup = try container.decodeIfPresent(String.self, forKey: .defaultModelGroup) ?? "default"
+        gateway = try container.decodeIfPresent(Gateway.self, forKey: .gateway) ?? Gateway()
     }
 
     /// 把旧版单模型配置迁移成 provider/model/group,并补齐缺失的默认值。
