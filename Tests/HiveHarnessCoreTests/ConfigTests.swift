@@ -10,7 +10,7 @@ struct AppConfigTests {
         #expect(config.llm.provider == "openai_compatible")
         #expect(config.llm.model == "gpt-4o-mini")
         #expect(config.llm.temperature == 0.4)
-        #expect(config.agent.maxRounds == 6)
+        #expect(config.agent.maxRounds == 12)
         #expect(config.agent.defaultPersona == "assistant")
         #expect(config.agent.clarificationMode == .balanced)
     }

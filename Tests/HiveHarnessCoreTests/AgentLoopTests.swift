@@ -52,6 +52,7 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
 
 func makeAgentFixture(
     responses: [LLMResponse],
+    config: AppConfig = .default,
     keychain: any KeychainStoring = KeychainStore(service: "com.hiveharness.test.\(UUID().uuidString)"),
     skillCatalog: String = ""
 ) throws -> (loop: AgentLoop, store: SQLiteStore, workspace: URL, mock: MockLLMClient) {
@@ -67,7 +68,7 @@ func makeAgentFixture(
     let mock = MockLLMClient(responses: responses)
     let loop = AgentLoop(
         store: store,
-        config: .default,
+        config: config,
         keychain: keychain,
         personas: PersonaStore(),
         workspace: ws,
@@ -106,22 +107,49 @@ struct AgentLoopTests {
         #expect(try fixture.store.listChatRecords().count == 2)
     }
 
-    @Test("轮次上限:一直调用工具则停止")
+    @Test("轮次上限:自动总结而不是硬停止")
     func roundLimit() async throws {
-        let fixture = try makeAgentFixture(responses: [
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-            LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
-        ])
+        var config = AppConfig.default
+        config.agent.maxRounds = 2
+        let fixture = try makeAgentFixture(
+            responses: [
+                LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
+                LLMResponse(content: "", toolCalls: [ToolCall(name: "list_dir", arguments: "{}")]),
+                LLMResponse(content: "已基于已有结果总结"),
+            ],
+            config: config
+        )
         let result = try await fixture.loop.invoke(message: "一直列目录")
 
-        #expect(result.reply.contains("工具调用轮次过多"))
-        #expect(result.engine == "tool-loop-limit")
-        #expect(result.trace.count == AppConfig.default.agent.maxRounds)
+        #expect(result.reply == "已基于已有结果总结")
+        #expect(result.engine == "tool-loop-final")
+        #expect(result.trace.count == 2)
+        #expect(result.modelCalls == 3)
+        #expect(fixture.mock.capturedToolNames().last?.isEmpty == true)
+    }
+
+    @Test("单次响应多个工具调用会全部执行并继续")
+    func multipleToolCalls() async throws {
+        var config = AppConfig.default
+        config.agent.maxRounds = 3
+        let fixture = try makeAgentFixture(
+            responses: [
+                LLMResponse(
+                    content: "",
+                    toolCalls: [
+                        ToolCall(name: "list_dir", arguments: "{}"),
+                        ToolCall(name: "list_dir", arguments: "{\"path\":\".\"}"),
+                    ]
+                ),
+                LLMResponse(content: "两个工具都完成了"),
+            ],
+            config: config
+        )
+        let result = try await fixture.loop.invoke(message: "同时列两次目录")
+
+        #expect(result.reply == "两个工具都完成了")
+        #expect(result.trace.count == 2)
+        #expect(result.modelCalls == 2)
     }
 
     @Test("无 API Key 时本地回退")

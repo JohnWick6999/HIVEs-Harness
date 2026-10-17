@@ -313,11 +313,8 @@ public actor AgentLoop {
             ? """
 
             [子代理]
-            需要独立调研、并行比较或多视角审查时:
-            - run_subagent:单任务,等待结果后由你汇总。
-            - run_subagent_cluster:2-4 个任务并行。
-            - spawn_background_task:长任务,立即返回任务 id,不要轮询。
-            子代理上下文独立且只读;最终结论仍由你负责。
+            独立调研/并行审查可用 run_subagent、run_subagent_cluster、spawn_background_task;
+            子代理只读且不递归,结果由你汇总;后台任务不要轮询。
             """
             : ""
         return """
@@ -330,6 +327,7 @@ public actor AgentLoop {
         \(memoryText)
 
         你是传统工具循环 Agent:需要外部信息时先调用工具,再根据工具结果回答。
+        按问题选择必要工具;独立查询可在同一次响应并行调用,结果返回后继续,不要因多工具结束。
         \(imageHint)
         \(subagentSection)
         \(webSection)
@@ -425,10 +423,15 @@ public actor AgentLoop {
         for tool in tools {
             registry.register(tool)
         }
-        // 只把当前模式允许的工具暴露给模型;执行阶段还会再校验一次
-        let specs = tools
+        // 只把当前模式允许、且与问题相关的工具暴露给模型;执行阶段还会再校验一次
+        let allowedSpecs = tools
             .filter { config.agent.workMode.allows(tool: $0.name) }
             .map(\.spec)
+        let specs = ToolSelector.select(
+            specs: allowedSpecs,
+            query: session.userText,
+            mode: config.agent.workMode
+        )
         return (registry, specs)
     }
 
@@ -806,10 +809,46 @@ public actor AgentLoop {
             }
         }
 
-        let limitText = "工具调用轮次过多,已停止。请把问题拆小后再试。"
-        recorder.add(.error, title: "轮次上限", detail: limitText, ok: false)
-        yield?(.limitReached(limitText))
-        return (limitText, traces, "tool-loop-limit", activeModel, usage, modelCalls, lastUsage)
+        // 到达轮次上限时不再硬停:让模型基于已有结果做一次无工具总结。
+        let limitInstruction = "已达到本轮工具轮次上限。请基于已有工具结果给出最终答复,不要再调用工具;如果仍未完成,说明剩余工作和下一步。"
+        var finalMessages = messages
+        finalMessages.append(.text(.system, limitInstruction))
+        let finalStarted = Date()
+        do {
+            let (response, modelID) = try await chatWithFallback(
+                pool: pool,
+                messages: finalMessages,
+                specs: []
+            )
+            activeModel = modelID
+            let reply = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let finalText = reply.isEmpty
+                ? "工具轮次已达上限,但未能生成总结。请缩小问题范围后重试。"
+                : reply
+            let finalUsage = response.usage ?? Self.estimateUsage(
+                messages: finalMessages,
+                completion: finalText
+            )
+            usage = usage + finalUsage
+            lastUsage = finalUsage
+            modelCalls += 1
+            recorder.add(
+                .model,
+                title: activeModel,
+                detail: "轮次上限后的最终总结",
+                durationMs: Int(Date().timeIntervalSince(finalStarted) * 1000),
+                metadata: ["final": "true"]
+            )
+            if streaming {
+                yield?(.chunk(finalText))
+            }
+            return (finalText, traces, "tool-loop-final", activeModel, usage, modelCalls, lastUsage)
+        } catch {
+            let limitText = "工具调用轮次过多,已停止。请把问题拆小后再试。"
+            recorder.add(.error, title: "轮次上限", detail: limitText, ok: false)
+            yield?(.limitReached(limitText))
+            return (limitText, traces, "tool-loop-limit", activeModel, usage, modelCalls, lastUsage)
+        }
     }
 
     /// 非流式请求:按模型组顺序回退,返回实际成功的模型 id。
