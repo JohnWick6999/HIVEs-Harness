@@ -12,7 +12,7 @@ struct SidebarView: View {
     let onRuns: () -> Void
     let onSettings: () -> Void
 
-    private var width: CGFloat { expanded ? 232 : 64 }
+    private var width: CGFloat { expanded ? 240 : 68 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -73,7 +73,7 @@ struct SidebarView: View {
                 Button {
                     withAnimation { expanded = true }
                 } label: {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 7) {
                         HiveMark(size: 30)
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.semibold))
@@ -85,7 +85,7 @@ struct SidebarView: View {
                 .help("展开侧边栏")
             }
         }
-        .frame(height: 44)
+        .frame(height: 48)
         .padding(.horizontal, expanded ? 2 : 0)
     }
 
@@ -110,7 +110,7 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.top, 8)
+        .padding(.top, 12)
     }
 
     // MARK: - 工作区
@@ -146,7 +146,7 @@ struct SidebarView: View {
             .buttonStyle(.plain)
             .help("在 Finder 中打开工作区")
         }
-        .padding(.top, 14)
+        .padding(.top, 16)
     }
 
     private var sessionsSection: some View {
@@ -178,7 +178,7 @@ struct SidebarView: View {
                                 Spacer()
                             }
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 7)
                             .background(
                                 session.id == state.currentThreadID
                                     ? HiveTheme.amber.opacity(0.11)
@@ -193,11 +193,13 @@ struct SidebarView: View {
             }
             .frame(maxHeight: 190)
         }
-        .padding(.top, 12)
+        .padding(.top, 14)
     }
 
     private var featuresSection: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 7) {
+            Divider()
+                .padding(.vertical, 8)
             sectionTitle("功能")
             SidebarAction(icon: "storefront", title: "插件市场", action: onMarketplace)
             SidebarAction(icon: "wrench.and.screwdriver", title: "工作台", action: onWorkbench)
@@ -207,8 +209,9 @@ struct SidebarView: View {
     }
 
     private var collapsedActions: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 10) {
             collapsedButton("plus", help: "新会话") { state.newSession() }
+            collapsedDivider
             collapsedButton("folder", help: "打开工作区") {
                 NSWorkspace.shared.open(state.workspace)
             }
@@ -218,17 +221,27 @@ struct SidebarView: View {
                 }
             } label: {
                 Image(systemName: "bubble.left.and.bubble.right")
-                    .frame(width: 34, height: 30)
+                    .font(.system(size: 14))
+                    .frame(width: 40, height: 36)
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
             .help("会话")
+            collapsedDivider
             collapsedButton("storefront", help: "插件市场", action: onMarketplace)
             collapsedButton("wrench.and.screwdriver", help: "工作台", action: onWorkbench)
             collapsedButton("clock.arrow.circlepath", help: "运行日志", action: onRuns)
         }
-        .padding(.top, 12)
+        .padding(.top, 14)
         .frame(maxWidth: .infinity)
+    }
+
+    private var collapsedDivider: some View {
+        Rectangle()
+            .fill(HiveTheme.hairline)
+            .frame(height: 1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 1)
     }
 
     // MARK: - 用户
@@ -266,7 +279,7 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .help("打开设置")
-        .padding(.top, 8)
+        .padding(.top, 12)
     }
 
     // MARK: - 小件
@@ -286,7 +299,8 @@ struct SidebarView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .frame(width: 34, height: 30)
+                .font(.system(size: 14))
+                .frame(width: 40, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -310,8 +324,8 @@ private struct SidebarAction: View {
                     .font(.caption)
                 Spacer()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
