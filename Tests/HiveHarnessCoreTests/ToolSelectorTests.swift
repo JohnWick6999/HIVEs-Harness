@@ -7,6 +7,12 @@ struct ToolSelectorTests {
     private func specs() -> [ToolSpec] {
         [
             ToolSpec(name: "read_file", description: "read"),
+            ToolSpec(name: "glob", description: "glob"),
+            ToolSpec(name: "grep", description: "grep"),
+            ToolSpec(name: "edit_file", description: "edit"),
+            ToolSpec(name: "shell", description: "shell"),
+            ToolSpec(name: "web_search", description: "search"),
+            ToolSpec(name: "read_pdf", description: "pdf"),
             ToolSpec(name: "write_file", description: "write"),
             ToolSpec(name: "http_get", description: "network"),
             ToolSpec(name: "run_local_agent", description: "cli"),
@@ -36,6 +42,7 @@ struct ToolSelectorTests {
 
         let code = Set(ToolSelector.select(specs: specs(), query: "审查代码并修复", mode: .full).map(\.name))
         #expect(code.contains("write_file"))
+        #expect(code.contains("edit_file"))
         #expect(code.contains("run_subagent"))
     }
 
@@ -43,6 +50,19 @@ struct ToolSelectorTests {
     func fallback() {
         let selected = ToolSelector.select(specs: specs(), query: "你好", mode: .full)
         #expect(selected.count == specs().count)
+    }
+
+    @Test("联网/Shell/PDF 按问题启用")
+    func specialized() {
+        let shell = Set(ToolSelector.select(specs: specs(), query: "运行测试并构建", mode: .full).map(\.name))
+        #expect(shell.contains("shell"))
+
+        let web = Set(ToolSelector.select(specs: specs(), query: "搜索最新新闻", mode: .full).map(\.name))
+        #expect(web.contains("web_search"))
+        #expect(web.contains("http_get"))
+
+        let pdf = Set(ToolSelector.select(specs: specs(), query: "总结这个 PDF 论文", mode: .sandbox).map(\.name))
+        #expect(pdf.contains("read_pdf"))
     }
 
     @Test("MCP 工具按问题启用")

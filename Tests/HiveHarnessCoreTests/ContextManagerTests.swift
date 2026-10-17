@@ -200,7 +200,7 @@ struct ContextManagerTests {
         )
 
         var config = AppConfig.default
-        config.llm.contextWindow = 4_000
+        config.llm.contextWindow = 5_000
         config.llm.maxOutputTokens = 500
         let mock = MockLLMClient(responses: [
             LLMResponse(content: "摘要:历史已压缩"),
