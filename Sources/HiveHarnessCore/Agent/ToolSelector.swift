@@ -24,7 +24,7 @@ public enum ToolSelector {
         let pluginWords = ["插件", "扩展", "技能包", "plugin", "extension"]
         let subagentWords = ["调研", "研究", "审查", "并行", "多角度", "多视角", "比较", "长任务", "后台", "子代理", "research", "review", "parallel", "subagent", "background"]
         let mcpWords = ["mcp", "服务器", "工具集"]
-        let docWords = ["pdf", "文档", "论文", "手册", "说明书"]
+        let docWords = ["pdf", "文档", "论文", "手册", "说明书", "word", "docx", "excel", "xlsx", "powerpoint", "pptx", "office", "表格", "演示文稿", "幻灯片"]
 
         func matches(_ words: [String]) -> Bool {
             words.contains { text.contains($0) }
@@ -59,7 +59,12 @@ public enum ToolSelector {
             names.insert("run_subagent_cluster")
             names.insert("spawn_background_task")
         }
-        if hasDoc { names.insert("read_pdf") }
+        if hasDoc {
+            names.insert("read_pdf")
+            names.insert("office_read")
+            names.insert("office_create")
+            names.insert("office_export_pdf")
+        }
         if hasMCP {
             for spec in specs where spec.name.hasPrefix("mcp__") {
                 names.insert(spec.name)

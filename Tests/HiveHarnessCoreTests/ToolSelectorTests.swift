@@ -13,6 +13,9 @@ struct ToolSelectorTests {
             ToolSpec(name: "shell", description: "shell"),
             ToolSpec(name: "web_search", description: "search"),
             ToolSpec(name: "read_pdf", description: "pdf"),
+            ToolSpec(name: "office_read", description: "office"),
+            ToolSpec(name: "office_create", description: "office"),
+            ToolSpec(name: "office_export_pdf", description: "office"),
             ToolSpec(name: "write_file", description: "write"),
             ToolSpec(name: "http_get", description: "network"),
             ToolSpec(name: "run_local_agent", description: "cli"),
@@ -63,6 +66,11 @@ struct ToolSelectorTests {
 
         let pdf = Set(ToolSelector.select(specs: specs(), query: "总结这个 PDF 论文", mode: .sandbox).map(\.name))
         #expect(pdf.contains("read_pdf"))
+
+        let office = Set(ToolSelector.select(specs: specs(), query: "把数据做成 Excel 表格", mode: .full).map(\.name))
+        #expect(office.contains("office_create"))
+        #expect(office.contains("office_read"))
+        #expect(office.contains("office_export_pdf"))
     }
 
     @Test("MCP 工具按问题启用")

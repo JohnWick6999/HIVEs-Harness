@@ -27,6 +27,7 @@
 | 🧑‍🤝‍🧑 子代理 | 单子代理、2–4 并行代理集群、只读隔离上下文 | ✅ |
 | 🕒 后台任务 | 子代理后台运行、状态/结果面板、取消 | ✅ |
 | 🧾 代码变更 | 写文件后底部浮窗;悬停查看行级 diff | ✅ |
+| 📊 Microsoft Office | Word/Excel/PowerPoint 读取、创建、导出 PDF | ✅ |
 | 📋 任务计划 | todo 工具、计划面板、超预算摘要压缩 | ✅ |
 | 🧾 运行日志 | 模型/工具/审批/压缩时间线,事件回放、问答回看与 JSON 导出 | ✅ |
 | 📊 AI 用量 | 底部状态条:token、缓存命中、模型轮数、运行/工具次数;按会话持久化 | ✅ |
@@ -246,6 +247,22 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 - 工具选择基于整段用户历史,避免每轮工具列表变化导致前缀缓存失效
 - 兼容 DeepSeek `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` 与 OpenAI `cached_tokens`
 - 用量栏缓存百分比只显示一个 `%`
+
+## 📊 Microsoft Office
+
+Agent 已接入本机 Microsoft Office(Word / Excel / PowerPoint 16+):
+
+- `office_read`:读取 docx 文本、xlsx 首个工作表 CSV、pptx 幻灯片文本
+- `office_create`:
+  - `docx`:传 `text`
+  - `xlsx`:传 `rows` 二维数组
+  - `pptx`:传 `slides [{title, body}]`
+- `office_export_pdf`:Word/Excel/PowerPoint 导出 PDF
+- 仅完全控制模式可用,执行前审批
+- 首次使用会请求 macOS 自动化权限;允许后由稳定签名保留
+- 文件会作为产物回到聊天,可点击预览
+
+前提:本机安装 Microsoft Word / Excel / PowerPoint。未安装时工具返回明确错误。
 
 ## 🧰 原生工具集
 
