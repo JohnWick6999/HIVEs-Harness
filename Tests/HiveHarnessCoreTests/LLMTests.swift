@@ -128,6 +128,50 @@ struct LLMClientSuite {
         #expect(result.finishReason == "tool_calls")
     }
 
+    @Test("推理请求体:reasoning_effort/thinking/reasoning_content")
+    func reasoningRequest() async throws {
+        let session = mockSession()
+        let box = RequestBox()
+        MockURLProtocol.requestHandler = { request in
+            box.set(request)
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let body = #"{"choices":[{"message":{"content":"ok","reasoning_content":"内部思考"}}]}"#
+            return (response, Data(body.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = OpenAICompatibleClient(
+            baseURL: "https://api.deepseek.com/v1",
+            apiKey: "sk-test",
+            model: "deepseek-flash",
+            reasoningEffort: "max",
+            thinkingEnabled: true,
+            session: session
+        )
+        let result = try await client.chat(
+            messages: [
+                ChatMessage(
+                    role: .assistant,
+                    content: .text("先看看"),
+                    reasoningContent: "上一轮思考"
+                ),
+                .text(.user, "继续"),
+            ],
+            tools: []
+        )
+        #expect(result.reasoningContent == "内部思考")
+        let request = try #require(box.get())
+        let body = try #require(bodyData(from: request))
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["reasoning_effort"] as? String == "max")
+        let thinking = json["thinking"] as? [String: String]
+        #expect(thinking?["type"] == "enabled")
+        let messages = json["messages"] as? [[String: Any]]
+        #expect(messages?.first?["reasoning_content"] as? String == "上一轮思考")
+    }
+
     @Test("非流式:请求头与端点正确")
     func chatBuildsRequest() async throws {
         let session = mockSession()

@@ -188,7 +188,9 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 - 滑杆为加厚的能量轨道,含流光、呼吸光晕、漂浮粒子与彗尾
 - 档位节点与底部文字使用同一组坐标,严格对齐
 - 已选区域左侧从滑块头喷出粒子;等级越高,喷溅数量、距离和速度越大
-- 等级越高,彗尾越长、颜色越强:青 → 琥珀 → 橙 → 粉紫;极高带旋转色环
+- 等级越高,彗尾越长、颜色越强:青 → 琥珀 → 橙 → 粉紫
+- **真实生效**:DeepSeek 会发送 `thinking {type}` 与 `reasoning_effort`;工具调用轮次会回传 `reasoning_content`,避免带 tools 时 400
+- DeepSeek 的 `medium` 由服务端映射为 high;`max` 发送 `max`;OpenAI 兼容模型的 `max` 发送 high
 - 档位越高,选择时动效越强:光环数量、粒子数量、旋转色环逐级增加
 
 ## 🎛️ 外观与侧栏
@@ -357,7 +359,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 213 tests in 45 suites passed
+# 214 tests in 45 suites passed
 ```
 
 ## 🔄 与旧版的关系

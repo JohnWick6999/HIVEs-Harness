@@ -68,6 +68,8 @@ public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
     public var toolName: String?
     /// 工具产出的文件(展示为可点击附件)
     public var fileAttachments: [FileAttachment]
+    /// DeepSeek thinking 模式:带 tools 的后续请求必须回传。
+    public var reasoningContent: String?
 
     public init(
         role: ChatRole,
@@ -76,6 +78,7 @@ public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
         toolCallID: String? = nil,
         toolName: String? = nil,
         fileAttachments: [FileAttachment] = [],
+        reasoningContent: String? = nil,
         id: UUID = UUID()
     ) {
         self.id = id
@@ -85,6 +88,7 @@ public struct ChatMessage: Codable, Sendable, Equatable, Identifiable {
         self.toolCallID = toolCallID
         self.toolName = toolName
         self.fileAttachments = fileAttachments
+        self.reasoningContent = reasoningContent
     }
 
     public static func text(_ role: ChatRole, _ text: String) -> ChatMessage {
@@ -209,17 +213,20 @@ public struct LLMResponse: Sendable, Equatable {
     public var toolCalls: [ToolCall]
     public var finishReason: String?
     public var usage: LLMUsage?
+    public var reasoningContent: String?
 
     public init(
         content: String,
         toolCalls: [ToolCall] = [],
         finishReason: String? = nil,
-        usage: LLMUsage? = nil
+        usage: LLMUsage? = nil,
+        reasoningContent: String? = nil
     ) {
         self.content = content
         self.toolCalls = toolCalls
         self.finishReason = finishReason
         self.usage = usage
+        self.reasoningContent = reasoningContent
     }
 }
 
@@ -229,17 +236,20 @@ public struct LLMStreamChunk: Sendable, Equatable {
     public var toolCallAccumulator: [ToolCall]?
     public var finishReason: String?
     public var usage: LLMUsage?
+    public var reasoningDelta: String?
 
     public init(
         delta: String,
         toolCallAccumulator: [ToolCall]? = nil,
         finishReason: String? = nil,
-        usage: LLMUsage? = nil
+        usage: LLMUsage? = nil,
+        reasoningDelta: String? = nil
     ) {
         self.delta = delta
         self.toolCallAccumulator = toolCallAccumulator
         self.finishReason = finishReason
         self.usage = usage
+        self.reasoningDelta = reasoningDelta
     }
 }
 

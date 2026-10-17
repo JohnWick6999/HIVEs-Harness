@@ -8,6 +8,8 @@ public struct OpenAICompatibleClient: LLMClient {
     public let model: String
     public let temperature: Double
     public let reasoningEffort: String?
+    /// DeepSeek:显式打开/关闭 thinking;nil 表示不发送。
+    public let thinkingEnabled: Bool?
     private let session: URLSession
 
     public init(
@@ -16,6 +18,7 @@ public struct OpenAICompatibleClient: LLMClient {
         model: String,
         temperature: Double = 0.4,
         reasoningEffort: String? = nil,
+        thinkingEnabled: Bool? = nil,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
@@ -23,6 +26,7 @@ public struct OpenAICompatibleClient: LLMClient {
         self.model = model
         self.temperature = temperature
         self.reasoningEffort = reasoningEffort
+        self.thinkingEnabled = thinkingEnabled
         self.session = session
     }
 
@@ -83,6 +87,9 @@ public struct OpenAICompatibleClient: LLMClient {
         if let reasoningEffort, !reasoningEffort.isEmpty {
             payload["reasoning_effort"] = reasoningEffort
         }
+        if let thinkingEnabled {
+            payload["thinking"] = ["type": thinkingEnabled ? "enabled" : "disabled"]
+        }
         if let tools, !tools.isEmpty {
             payload["tools"] = tools.map { tool in
                 [
@@ -114,6 +121,12 @@ public struct OpenAICompatibleClient: LLMClient {
                     return ["type": "image_url", "image_url": ["url": part.imageURL ?? ""]]
                 }
             }
+        }
+        if message.role == .assistant,
+           let reasoning = message.reasoningContent,
+           !reasoning.isEmpty {
+            // DeepSeek 带 tools 的思考模式要求回传上一轮 reasoning_content
+            dict["reasoning_content"] = reasoning
         }
         if let calls = message.toolCalls, !calls.isEmpty {
             dict["tool_calls"] = calls.map { call in
@@ -152,6 +165,7 @@ public struct OpenAICompatibleClient: LLMClient {
             struct Choice: Decodable {
                 struct Message: Decodable {
                     let content: String?
+                    let reasoning_content: String?
                     struct ToolCall: Decodable {
                         struct Function: Decodable {
                             let name: String
@@ -181,7 +195,8 @@ public struct OpenAICompatibleClient: LLMClient {
                 content: choice.message.content ?? "",
                 toolCalls: calls,
                 finishReason: choice.finish_reason,
-                usage: decoded.usage?.toLLMUsage()
+                usage: decoded.usage?.toLLMUsage(),
+                reasoningContent: choice.message.reasoning_content
             )
         } catch let error as LLMError {
             throw error
@@ -266,6 +281,7 @@ public struct OpenAICompatibleClient: LLMClient {
             struct Choice: Decodable {
                 struct Delta: Decodable {
                     let content: String?
+                    let reasoning_content: String?
                     struct ToolCall: Decodable {
                         struct Function: Decodable {
                             let name: String?
@@ -320,7 +336,8 @@ public struct OpenAICompatibleClient: LLMClient {
             LLMStreamChunk(
                 delta: delta.content ?? "",
                 toolCallAccumulator: toolCalls.isEmpty ? nil : toolCalls,
-                finishReason: choice.finish_reason
+                finishReason: choice.finish_reason,
+                reasoningDelta: delta.reasoning_content
             )
         )
     }
