@@ -1,5 +1,5 @@
 #!/bin/bash
-# 运行 ShizukuCore 测试。
+# 运行 HiveHarnessCore 测试。
 #
 # 为什么需要这个脚本:
 #   Command Line Tools 自带的 Swift Testing 宏插件在

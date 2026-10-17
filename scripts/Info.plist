@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>ShizukuClaw</string>
+    <string>HiveHarness</string>
     <key>CFBundleDisplayName</key>
-    <string>ShizukuClaw</string>
+    <string>HIVE's Harness</string>
     <key>CFBundleIdentifier</key>
-    <string>com.shizukuclaw.app</string>
+    <string>com.hiveharness.app</string>
     <key>CFBundleVersion</key>
     <string>0.1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
     <key>CFBundleExecutable</key>
-    <string>ShizukuClaw</string>
+    <string>HiveHarness</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -25,6 +25,6 @@
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>NSHumanReadableCopyright</key>
-    <string>ShizukuClaw Alpha</string>
+    <string>HIVE's Harness</string>
 </dict>
 </plist>

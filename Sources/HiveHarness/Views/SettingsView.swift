@@ -1,0 +1,98 @@
+import SwiftUI
+import HiveHarnessCore
+
+struct SettingsView: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        @Bindable var state = state
+        TabView {
+            ModelsSettingsView()
+                .tabItem { Label("模型", systemImage: "cpu") }
+            agentTab($state)
+                .tabItem { Label("Agent", systemImage: "gearshape.2") }
+            PersonaSettingsView()
+                .tabItem { Label("人格", systemImage: "person.2") }
+            MCPSettingsView()
+                .tabItem { Label("MCP", systemImage: "server.rack") }
+            SkillsSettingsView()
+                .tabItem { Label("技能", systemImage: "wand.and.stars") }
+            GatewaySettingsView()
+                .tabItem { Label("网关", systemImage: "network") }
+            memoryTab
+                .tabItem { Label("记忆", systemImage: "brain") }
+            aboutTab
+                .tabItem { Label("关于", systemImage: "info.circle") }
+        }
+        .frame(width: 880, height: 660)
+        .padding(16)
+    }
+
+    // MARK: - 记忆管理
+
+    private var memoryTab: some View {
+        MemoryListView()
+            .environment(state)
+            .onAppear {
+                state.loadMemories()
+            }
+    }
+
+    // MARK: - Agent 设置
+
+    private func agentTab(_ state: Bindable<AppState>) -> some View {
+        Form {
+            Picker("默认人格", selection: state.selectedPersona) {
+                ForEach(state.wrappedValue.availablePersonas) { persona in
+                    Text("\(persona.meta.name) (\(persona.id))")
+                        .tag(persona.id)
+                }
+            }
+            Stepper("最大工具轮数:\(state.config.agent.maxRounds)", value: state.config.agent.maxRounds, in: 1...20)
+            LabeledContent("工作区") {
+                Text(state.wrappedValue.workspace.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            LabeledContent("数据库") {
+                Text(state.wrappedValue.store.status()["path"] ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            HStack {
+                Spacer()
+                Button("保存") {
+                    state.wrappedValue.saveConfig()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - 关于
+
+    private var aboutTab: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "hexagon.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.tint)
+            Text("HIVE's Harness")
+                .font(.title2)
+                .fontWeight(.semibold)
+            Text("Alpha 0.1 · HIVE's Harness")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("核心:HiveHarnessCore v\(HiveHarnessCore.version)\n本地智能体 · 人格 · 记忆 · MCP")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+}

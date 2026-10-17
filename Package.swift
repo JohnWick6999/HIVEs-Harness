@@ -1,12 +1,11 @@
 // swift-tools-version: 6.2
-// 说明:当前用 Swift 6.4(Xcode-beta)开发;清单保持 6.2 以兼容正式版 Xcode
-// (正式版通常落后于 beta 工具链)。代码未使用 6.3+ 专属特性。
+// 说明:当前用 Swift 6.4(Xcode 27.1)开发;清单保持 6.2 以兼容较旧工具链。
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 let package = Package(
-    name: "ShizukuCore",
+    name: "HiveHarness",
     platforms: [
         .macOS(.v14),
         .iOS(.v17),
@@ -16,12 +15,12 @@ let package = Package(
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
-            name: "ShizukuCore",
-            targets: ["ShizukuCore"]
+            name: "HiveHarnessCore",
+            targets: ["HiveHarnessCore"]
         ),
         .executable(
-            name: "ShizukuClaw",
-            targets: ["ShizukuClaw"]
+            name: "HiveHarness",
+            targets: ["HiveHarness"]
         ),
     ],
     dependencies: [
@@ -32,7 +31,7 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "ShizukuCore",
+            name: "HiveHarnessCore",
             resources: [
                 .process("Resources"),
             ],
@@ -41,8 +40,8 @@ let package = Package(
             ],
         ),
         .testTarget(
-            name: "ShizukuCoreTests",
-            dependencies: ["ShizukuCore"],
+            name: "HiveHarnessCoreTests",
+            dependencies: ["HiveHarnessCore"],
             exclude: [
                 "Fixtures",  // 假 MCP 服务器脚本,通过 #filePath 运行时定位,不入包
             ],
@@ -50,11 +49,10 @@ let package = Package(
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],
         ),
-        // macOS App(Alpha 阶段以可执行目标运行,swift run 即弹窗;
-        // Beta 阶段再包 .xcodeproj 转正式 .app)
+        // macOS App(以可执行目标运行,swift run 即弹窗;scripts/make_app.sh 打包 .app)
         .executableTarget(
-            name: "ShizukuClaw",
-            dependencies: ["ShizukuCore"],
+            name: "HiveHarness",
+            dependencies: ["HiveHarnessCore"],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency"),
             ],
