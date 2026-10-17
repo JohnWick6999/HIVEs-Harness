@@ -612,13 +612,15 @@ final class AppState {
     }
 
     /// 发送消息并调用 Agent(无 API Key 时核心自动走本地回退)
-    func send(_ text: String) async {
+    func send(_ text: String, attachments: [FileAttachment] = []) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isBusy else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isBusy else { return }
         let requestPersona = selectedPersona
         let requestThread = threadID
-
-        messages.append(.text(.user, trimmed))
+        let prompt = Self.promptWithAttachments(trimmed, attachments: attachments)
+        messages.append(
+            ChatMessage(role: .user, content: .text(prompt), fileAttachments: attachments)
+        )
         isBusy = true
         errorMessage = nil
         lastFileChanges = []
@@ -646,7 +648,8 @@ final class AppState {
         )
         do {
             let result = try await loop.invoke(
-                message: trimmed,
+                message: prompt,
+                attachments: attachments,
                 persona: requestPersona,
                 threadID: requestThread
             )
@@ -690,14 +693,17 @@ final class AppState {
     }
 
     /// 流式发送:文本增量实时更新最后一条助手消息(打字机效果)
-    func sendStreaming(_ text: String) async {
+    func sendStreaming(_ text: String, attachments: [FileAttachment] = []) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isBusy else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty, !isBusy else { return }
         let requestPersona = selectedPersona
         let requestThread = threadID
+        let prompt = Self.promptWithAttachments(trimmed, attachments: attachments)
         var streamedReply = ""
 
-        messages.append(.text(.user, trimmed))
+        messages.append(
+            ChatMessage(role: .user, content: .text(prompt), fileAttachments: attachments)
+        )
         isBusy = true
         errorMessage = nil
         lastToolTrace = []
@@ -748,7 +754,8 @@ final class AppState {
         )
         do {
             for try await event in await loop.stream(
-                message: trimmed,
+                message: prompt,
+                attachments: attachments,
                 persona: requestPersona,
                 threadID: requestThread
             ) {
@@ -877,6 +884,37 @@ final class AppState {
     }
 
     // MARK: - 模型配置
+
+    var activeModelID: String? {
+        let normalized = config.normalized()
+        return normalized.modelGroups[normalized.defaultModelGroup]?.models.first
+    }
+
+    var activeModelConfig: ModelConfig? {
+        guard let id = activeModelID else { return nil }
+        return config.models[id]
+    }
+
+    /// 当前 API(同一 provider)下可切换的 Agent 模型。
+    var selectableModels: [ModelConfig] {
+        guard let active = activeModelConfig else { return [] }
+        return config.models.values
+            .filter { $0.provider == active.provider && $0.enabled && $0.isAgentCapable }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func selectModel(_ id: String) {
+        guard let active = activeModelConfig,
+              let candidate = config.models[id],
+              candidate.provider == active.provider,
+              candidate.enabled, candidate.isAgentCapable,
+              var group = config.modelGroups[config.defaultModelGroup]
+        else { return }
+        group.models.removeAll { $0 == id }
+        group.models.insert(id, at: 0)
+        config.modelGroups[group.id] = group
+        saveConfig()
+    }
 
     /// 默认模型组首个模型的可读名称(顶栏展示)。
     var activeModelName: String {
@@ -1221,6 +1259,43 @@ final class AppState {
             : 0
         contextState = state
         try? store.saveContextState(state, threadID: threadID, persona: selectedPersona)
+    }
+
+    /// 把外部文件复制到工作区 uploads/,避免依赖原路径的访问权限。
+    func importAttachments(from urls: [URL]) -> [FileAttachment] {
+        let fm = FileManager.default
+        let uploads = workspace.appendingPathComponent("uploads", isDirectory: true)
+        try? fm.createDirectory(at: uploads, withIntermediateDirectories: true)
+        var result: [FileAttachment] = []
+        for url in urls.prefix(12) {
+            guard url.isFileURL else { continue }
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            guard size <= 30 * 1024 * 1024 else {
+                errorMessage = "附件超过 30MB,已跳过: \(url.lastPathComponent)"
+                continue
+            }
+            let safeName = url.lastPathComponent.replacingOccurrences(of: "/", with: "-")
+            let target = uploads.appendingPathComponent(
+                UUID().uuidString.lowercased().prefix(8) + "-" + safeName
+            )
+            do {
+                try fm.copyItem(at: url, to: target)
+                result.append(FileAttachment(path: target.path, name: url.lastPathComponent))
+            } catch {
+                errorMessage = "复制附件失败: \(url.lastPathComponent)"
+            }
+        }
+        return result
+    }
+
+    private static func promptWithAttachments(
+        _ text: String,
+        attachments: [FileAttachment]
+    ) -> String {
+        guard !attachments.isEmpty else { return text }
+        let list = attachments.map { "- \($0.name): \($0.path)" }.joined(separator: "\n")
+        let body = text.isEmpty ? "(用户只上传了附件)" : text
+        return "\(body)\n\n[用户上传附件]\n\(list)\n请用 read_file 读取需要的内容;图片不要用 read_file 读取。"
     }
 
     // MARK: - AI 用量

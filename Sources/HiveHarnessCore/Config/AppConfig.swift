@@ -1,5 +1,40 @@
 import Foundation
 
+/// 推理等级:仅对支持 reasoning_effort 的模型发送。
+public enum ReasoningEffort: String, Codable, Sendable, CaseIterable, Identifiable {
+    case off
+    case low
+    case medium
+    case high
+    case max
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .off: return "关闭"
+        case .low: return "低"
+        case .medium: return "中"
+        case .high: return "高"
+        case .max: return "极高"
+        }
+    }
+
+    public var apiValue: String? {
+        switch self {
+        case .off: return nil
+        case .low: return "low"
+        case .medium: return "medium"
+        case .high: return "high"
+        case .max: return "high"
+        }
+    }
+
+    public var index: Int {
+        Self.allCases.firstIndex(of: self) ?? 2
+    }
+}
+
 /// 应用配置,字段对齐原版 `config/settings.yaml`。
 /// 敏感字段(API Key)不在此结构内,统一走 `KeychainStore`。
 public struct AppConfig: Codable, Sendable, Equatable {
@@ -62,6 +97,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
         public var autoEvolveSkills: Bool
         /// 主动提问偏好(关闭 / 平衡 / 积极)
         public var clarificationMode: ClarificationMode
+        /// 推理等级
+        public var reasoningEffort: ReasoningEffort
 
         public init(
             maxRounds: Int = 12,
@@ -69,7 +106,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
             defaultPersona: String = "assistant",
             workMode: WorkMode = .sandbox,
             autoEvolveSkills: Bool = true,
-            clarificationMode: ClarificationMode = .balanced
+            clarificationMode: ClarificationMode = .balanced,
+            reasoningEffort: ReasoningEffort = .medium
         ) {
             self.maxRounds = maxRounds
             self.systemPrompt = systemPrompt
@@ -77,10 +115,11 @@ public struct AppConfig: Codable, Sendable, Equatable {
             self.workMode = workMode
             self.autoEvolveSkills = autoEvolveSkills
             self.clarificationMode = clarificationMode
+            self.reasoningEffort = reasoningEffort
         }
 
         private enum CodingKeys: String, CodingKey {
-            case maxRounds, systemPrompt, defaultPersona, workMode, autoEvolveSkills, clarificationMode
+            case maxRounds, systemPrompt, defaultPersona, workMode, autoEvolveSkills, clarificationMode, reasoningEffort
         }
 
         /// 兼容旧配置文件:workMode 缺失时按安全模式处理。
@@ -94,6 +133,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
             workMode = try container.decodeIfPresent(WorkMode.self, forKey: .workMode) ?? .sandbox
             autoEvolveSkills = try container.decodeIfPresent(Bool.self, forKey: .autoEvolveSkills) ?? true
             clarificationMode = try container.decodeIfPresent(ClarificationMode.self, forKey: .clarificationMode) ?? .balanced
+            reasoningEffort = try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort) ?? .medium
         }
     }
 

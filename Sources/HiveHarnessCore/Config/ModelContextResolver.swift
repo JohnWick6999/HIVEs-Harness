@@ -25,6 +25,19 @@ public enum ModelContextResolver {
         return nil
     }
 
+    /// 是否支持 OpenAI 兼容的 reasoning_effort 字段。
+    public static func supportsReasoningEffort(for model: String) -> Bool {
+        let name = model.lowercased()
+        return name.contains("deepseek-flash")
+            || name.contains("deepseek-v4")
+            || name.contains("deepseek-reasoner")
+            || name.contains("o1")
+            || name.contains("o3")
+            || name.contains("o4")
+            || name.contains("gpt-5")
+            || name.contains("thinking")
+    }
+
     public static func formatted(_ tokens: Int) -> String {
         tokens.formatted(.number.grouping(.automatic))
     }

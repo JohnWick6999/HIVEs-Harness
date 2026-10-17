@@ -7,6 +7,7 @@ public struct OpenAICompatibleClient: LLMClient {
     public let apiKey: String
     public let model: String
     public let temperature: Double
+    public let reasoningEffort: String?
     private let session: URLSession
 
     public init(
@@ -14,12 +15,14 @@ public struct OpenAICompatibleClient: LLMClient {
         apiKey: String,
         model: String,
         temperature: Double = 0.4,
+        reasoningEffort: String? = nil,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
         self.apiKey = apiKey
         self.model = model
         self.temperature = temperature
+        self.reasoningEffort = reasoningEffort
         self.session = session
     }
 
@@ -76,6 +79,9 @@ public struct OpenAICompatibleClient: LLMClient {
         if stream {
             // OpenAI / DeepSeek 支持;让最后一个 chunk 带回 usage。
             payload["stream_options"] = ["include_usage": true]
+        }
+        if let reasoningEffort, !reasoningEffort.isEmpty {
+            payload["reasoning_effort"] = reasoningEffort
         }
         if let tools, !tools.isEmpty {
             payload["tools"] = tools.map { tool in
