@@ -780,6 +780,24 @@ final class AppState {
                     return GatewayChatResult(reply: "App 已退出", model: "unavailable")
                 }
                 return await self.handleGatewayChat(request)
+            },
+            streamChat: { [weak self] request in
+                AsyncThrowingStream { continuation in
+                    Task { @MainActor in
+                        guard let self else {
+                            continuation.finish()
+                            return
+                        }
+                        do {
+                            for try await event in self.gatewayStream(request) {
+                                continuation.yield(event)
+                            }
+                            continuation.finish()
+                        } catch {
+                            continuation.finish(throwing: error)
+                        }
+                    }
+                }
             }
         )
         let server = LocalGateway(router: router)
@@ -805,6 +823,63 @@ final class AppState {
         gatewayPort = nil
         config.gateway.enabled = false
         saveConfig()
+    }
+
+    /// 网关流式请求:逐 token 产出,结束携带用量。
+    private func gatewayStream(
+        _ request: GatewayChatRequest
+    ) -> AsyncThrowingStream<GatewayStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                let persona = request.persona ?? self.config.gateway.defaultPersona
+                let thread = request.threadID ?? ("gateway_" + UUID().uuidString.lowercased())
+                let mcpTools = await self.loadMCPTools()
+                let loop = AgentLoop(
+                    store: self.store,
+                    config: self.config,
+                    keychain: self.keychain,
+                    personas: self.personas,
+                    workspace: self.workspace,
+                    approvalHandler: { _ in .reject },
+                    extraTools: mcpTools + self.skillTools,
+                    skillCatalog: self.skillCatalogText
+                )
+                do {
+                    var model = self.config.llm.model
+                    for try await event in await loop.stream(
+                        message: request.message,
+                        persona: persona,
+                        threadID: thread
+                    ) {
+                        switch event {
+                        case .chunk(let delta):
+                            continuation.yield(.delta(delta))
+                        case .finished(let result):
+                            model = result.activeModel.isEmpty
+                                ? self.config.llm.model
+                                : result.activeModel
+                            continuation.yield(.finished(
+                                model: model,
+                                reply: result.reply,
+                                promptTokens: TokenEstimator.estimate(request.message),
+                                completionTokens: TokenEstimator.estimate(result.reply)
+                            ))
+                            continuation.finish()
+                            return
+                        default:
+                            break
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     /// 网关请求:独立会话,外部写入/执行一律拒绝审批。

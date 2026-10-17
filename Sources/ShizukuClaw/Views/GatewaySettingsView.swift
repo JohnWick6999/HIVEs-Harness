@@ -77,7 +77,7 @@ struct GatewaySettingsView: View {
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
 
-                Text("当前只支持非流式(stream=false)。网关请求默认拒绝外部写入与执行审批;需要工具时请在主窗口操作。")
+                Text("支持非流式与 SSE 流式(stream=true)。网关请求默认拒绝外部写入与执行审批;需要工具时请在主窗口操作。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

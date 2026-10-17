@@ -132,17 +132,80 @@ public actor LocalGateway {
     }
 
     private func respond(buffer: Data, connection: NWConnection) async {
-        let response: HTTPResponse
-        if let request = try? HTTPRequestParser.parse(buffer) {
-            response = await router.route(request)
-        } else {
-            response = .error("bad request", status: 400)
+        guard let request = try? HTTPRequestParser.parse(buffer) else {
+            sendFull(.error("bad request", status: 400), connection: connection)
+            return
         }
+        switch await router.routeStream(request) {
+        case .response(let response):
+            sendFull(response, connection: connection)
+        case let .stream(status, headers, body):
+            await sendStream(status: status, headers: headers, body: body, connection: connection)
+        }
+    }
+
+    private func sendFull(_ response: HTTPResponse, connection: NWConnection) {
         connection.send(
             content: response.serialized(),
             completion: .contentProcessed { _ in
                 connection.cancel()
             }
         )
+    }
+
+    private func sendStream(
+        status: Int,
+        headers: [String: String],
+        body: AsyncThrowingStream<String, Error>,
+        connection: NWConnection
+    ) async {
+        var allHeaders = headers
+        allHeaders["Transfer-Encoding"] = "chunked"
+        allHeaders["Connection"] = "close"
+        allHeaders["Server"] = "ShizukuClaw"
+        var head = "HTTP/1.1 \(status) OK\r\n"
+        for (key, value) in allHeaders.sorted(by: { $0.key < $1.key }) {
+            head += "\(key): \(value)\r\n"
+        }
+        head += "\r\n"
+        guard await send(Data(head.utf8), connection: connection) else {
+            connection.cancel()
+            return
+        }
+
+        do {
+            for try await payload in body {
+                let frame = Data("data: \(payload)\n\n".utf8)
+                guard await send(chunked(frame), connection: connection) else {
+                    connection.cancel()
+                    return
+                }
+            }
+            _ = await send(Data("0\r\n\r\n".utf8), connection: connection)
+        } catch {
+            let payload = "{\"error\":{\"message\":\"stream failed\",\"type\":\"server_error\"}}"
+            let frame = Data("data: \(payload)\n\n".utf8)
+            _ = await send(chunked(frame), connection: connection)
+            _ = await send(Data("0\r\n\r\n".utf8), connection: connection)
+        }
+        connection.cancel()
+    }
+
+    private func chunked(_ data: Data) -> Data {
+        var output = Data("\(String(data.count, radix: 16))\r\n".utf8)
+        output.append(data)
+        output.append(Data("\r\n".utf8))
+        return output
+    }
+
+    private func send(_ data: Data, connection: NWConnection) async -> Bool {
+        await withCheckedContinuation { continuation in
+            connection.send(
+                content: data,
+                completion: .contentProcessed { error in
+                    continuation.resume(returning: error == nil)
+                }
+            )
+        }
     }
 }

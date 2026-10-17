@@ -118,6 +118,49 @@ struct GatewayTests {
         #expect(authorized.status == 200)
     }
 
+    @Test("SSE 流式:增量 chunk 以 data: 行输出")
+    func streamingRoute() async throws {
+        let router = GatewayRouter(
+            models: { ["model-a"] },
+            token: nil,
+            chat: { _ in GatewayChatResult(reply: "fallback", model: "model-a") },
+            streamChat: { _ in
+                AsyncThrowingStream { continuation in
+                    continuation.yield(.delta("你"))
+                    continuation.yield(.delta("好"))
+                    continuation.yield(.finished(
+                        model: "model-a",
+                        reply: "你好",
+                        promptTokens: 2,
+                        completionTokens: 3
+                    ))
+                    continuation.finish()
+                }
+            }
+        )
+        let body = jsonBody([
+            "stream": true,
+            "messages": [["role": "user", "content": "hi"]],
+        ])
+        let route = await router.routeStream(
+            HTTPRequest(method: "POST", path: "/v1/chat/completions", body: body)
+        )
+        guard case let .stream(status, headers, stream) = route else {
+            Issue.record("expected SSE stream")
+            return
+        }
+        #expect(status == 200)
+        #expect(headers["Content-Type"]?.contains("text/event-stream") == true)
+
+        var payloads: [String] = []
+        for try await payload in stream {
+            payloads.append(payload)
+        }
+        #expect(payloads.contains { $0.contains("\"content\":\"你\"") })
+        #expect(payloads.contains { $0.contains("\"finish_reason\":\"stop\"") })
+        #expect(payloads.last == "[DONE]")
+    }
+
     @Test("stream=true 明确拒绝,未知路由 404")
     func rejections() async {
         let router = GatewayRouter(
@@ -138,6 +181,42 @@ struct GatewayTests {
             HTTPRequest(method: "GET", path: "/nope")
         )
         #expect(notFound.status == 404)
+    }
+
+    @Test("真实监听 SSE:分块输出并被客户端读取")
+    func listenerStreaming() async throws {
+        let router = GatewayRouter(
+            models: { ["m"] },
+            token: nil,
+            chat: { _ in GatewayChatResult(reply: "fallback", model: "m") },
+            streamChat: { _ in
+                AsyncThrowingStream { continuation in
+                    continuation.yield(.delta("流"))
+                    continuation.yield(.delta("式"))
+                    continuation.yield(.finished(model: "m", reply: "流式", promptTokens: 1, completionTokens: 2))
+                    continuation.finish()
+                }
+            }
+        )
+        let gateway = LocalGateway(router: router)
+        let port = try await gateway.start(port: 0)
+        var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonBody([
+            "stream": true,
+            "messages": [["role": "user", "content": "hi"]],
+        ])
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        var payloads: [String] = []
+        for try await line in bytes.lines where line.hasPrefix("data: ") {
+            payloads.append(String(line.dropFirst(6)))
+        }
+        #expect(payloads.contains { $0.contains("\"content\":\"流\"") })
+        #expect(payloads.contains("[DONE]"))
+        await gateway.stop()
     }
 
     @Test("真实监听 127.0.0.1 并响应 /health")
