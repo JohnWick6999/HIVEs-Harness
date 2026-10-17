@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// 技能:一段可复用的任务流程指令(可选本地 handler,当前版本只注入指令)。
@@ -82,6 +83,31 @@ extension SkillError: LocalizedError {
         case .invalidPackage(let message): return "技能包无效: \(message)"
         case .notInstalled(let id): return "技能未安装: \(id)"
         }
+    }
+}
+
+/// 技能的历史版本(安装/覆盖前自动备份)。
+public struct SkillVersion: Sendable, Equatable, Identifiable {
+    public var skillID: String
+    public var version: String
+    public var createdAt: Date
+    public var sha256: String
+    public var directory: URL
+
+    public var id: String { "\(skillID)/\(version)" }
+
+    public init(
+        skillID: String,
+        version: String,
+        createdAt: Date,
+        sha256: String,
+        directory: URL
+    ) {
+        self.skillID = skillID
+        self.version = version
+        self.createdAt = createdAt
+        self.sha256 = sha256
+        self.directory = directory
     }
 }
 
@@ -193,6 +219,7 @@ public final class SkillStore: @unchecked Sendable {
         let id = declared.isEmpty ? source.lastPathComponent : declared
         let target = userDirectory.appendingPathComponent(id, isDirectory: true)
         if fm.fileExists(atPath: target.path) {
+            _ = backup(id: id)
             try fm.removeItem(at: target)
         }
         try fm.copyItem(at: source, to: target)
@@ -200,6 +227,11 @@ public final class SkillStore: @unchecked Sendable {
         guard let skill = all().first(where: { $0.id == id }) else {
             throw SkillError.invalidPackage("安装后无法解析技能 \(id)")
         }
+        appendLedger(
+            "install",
+            id: id,
+            detail: "sha256=\(Self.sha256(skill.body))"
+        )
         return skill
     }
 
@@ -210,6 +242,7 @@ public final class SkillStore: @unchecked Sendable {
         }
         try FileManager.default.removeItem(at: target)
         reload()
+        appendLedger("delete", id: id)
     }
 
     /// 归档超过 `days` 天未使用的用户技能到 `_archive/`,不删除内容。
@@ -240,7 +273,97 @@ public final class SkillStore: @unchecked Sendable {
             }
         }
         reload()
+        for id in archived {
+            appendLedger("archive", id: id)
+        }
         return archived
+    }
+
+    // MARK: - 版本历史
+
+    /// 当前技能的最新历史版本列表(按时间倒序)。
+    public func versions(id: String) -> [SkillVersion] {
+        let root = versionRoot().appendingPathComponent(id, isDirectory: true)
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return entries.compactMap { directory -> SkillVersion? in
+            let manifest = directory.appendingPathComponent("SKILL.md")
+            guard let text = try? String(contentsOf: manifest, encoding: .utf8) else { return nil }
+            let date = (try? directory.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? Date.distantPast
+            return SkillVersion(
+                skillID: id,
+                version: directory.lastPathComponent,
+                createdAt: date,
+                sha256: Self.sha256(text),
+                directory: directory
+            )
+        }.sorted { $0.version > $1.version }
+    }
+
+    /// 回滚到指定历史版本;回滚前会先备份当前版本。
+    public func rollback(id: String, version: String) throws {
+        let source = versionRoot()
+            .appendingPathComponent(id, isDirectory: true)
+            .appendingPathComponent(version, isDirectory: true)
+        guard FileManager.default.fileExists(
+            atPath: source.appendingPathComponent("SKILL.md").path
+        ) else {
+            throw SkillError.notInstalled("\(id)@\(version)")
+        }
+        _ = backup(id: id)
+        let target = userDirectory.appendingPathComponent(id, isDirectory: true)
+        if FileManager.default.fileExists(atPath: target.path) {
+            try FileManager.default.removeItem(at: target)
+        }
+        try FileManager.default.copyItem(at: source, to: target)
+        reload()
+        appendLedger("rollback", id: id, detail: "version=\(version)")
+    }
+
+    /// 把当前版本复制到 `_versions/<id>/<timestamp>`,返回版本号。
+    @discardableResult
+    public func backup(id: String) -> String? {
+        guard let skill = all().first(where: { $0.id == id && !$0.isBuiltin }),
+              let source = skill.directory
+        else { return nil }
+        let version = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(6))"
+        let target = versionRoot()
+            .appendingPathComponent(id, isDirectory: true)
+            .appendingPathComponent(version, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: target.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.copyItem(at: source, to: target)
+            pruneVersions(id: id, keep: 5)
+            appendLedger("backup", id: id, detail: "version=\(version)")
+            return version
+        } catch {
+            return nil
+        }
+    }
+
+    private func pruneVersions(id: String, keep: Int) {
+        let root = versionRoot().appendingPathComponent(id, isDirectory: true)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        let sorted = entries.sorted { $0.lastPathComponent > $1.lastPathComponent }
+        for old in sorted.dropFirst(keep) {
+            try? FileManager.default.removeItem(at: old)
+        }
+    }
+
+    private func versionRoot() -> URL {
+        userDirectory.appendingPathComponent("_versions", isDirectory: true)
     }
 
     // MARK: - 扫描与解析
@@ -393,6 +516,35 @@ public final class SkillStore: @unchecked Sendable {
                 hasHandler: false
             )
         }
+    }
+
+    // MARK: - Ledger
+
+    private func appendLedger(_ action: String, id: String, detail: String = "") {
+        let entry: [String: Any] = [
+            "time": ISO8601DateFormatter().string(from: Date()),
+            "action": action,
+            "id": id,
+            "detail": detail,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]),
+              let line = String(data: data, encoding: .utf8)
+        else { return }
+        let url = userDirectory.appendingPathComponent("_ledger.jsonl")
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data((line + "\n").utf8))
+        } else {
+            try? (line + "\n").write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    static func sha256(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     // MARK: - 使用遥测

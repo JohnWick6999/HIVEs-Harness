@@ -283,7 +283,9 @@ private struct SkillProposalDetailView: View {
 
 private struct SkillDetailView: View {
     let skill: Skill
+    @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
+    @State private var versions: [SkillVersion] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -327,8 +329,51 @@ private struct SkillDetailView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            if !skill.isBuiltin {
+                Divider()
+                HStack {
+                    Text("版本历史")
+                        .font(.caption.weight(.semibold))
+                    Text("\(versions.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("备份当前") {
+                        state.backupSkill(skill.id)
+                        versions = state.skillVersions(skill.id)
+                    }
+                }
+                if versions.isEmpty {
+                    Text("暂无历史版本;覆盖安装前会自动备份。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(versions.prefix(5)) { version in
+                                HStack(spacing: 8) {
+                                    Text(version.version)
+                                        .font(.caption2.monospaced())
+                                    Text(version.createdAt.formatted(date: .numeric, time: .shortened))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("回滚") {
+                                        state.rollbackSkill(skill.id, version: version.version)
+                                        dismiss()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 90)
+                }
+            }
         }
         .padding(18)
-        .frame(width: 640, height: 500)
+        .frame(width: 680, height: 580)
+        .task {
+            versions = state.skillVersions(skill.id)
+        }
     }
 }

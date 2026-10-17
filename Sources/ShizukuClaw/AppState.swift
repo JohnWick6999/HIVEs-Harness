@@ -673,6 +673,19 @@ final class AppState {
         skills = skillStore.all()
     }
 
+    func skillVersions(_ id: String) -> [SkillVersion] {
+        skillStore.versions(id: id)
+    }
+
+    func backupSkill(_ id: String) {
+        _ = skillStore.backup(id: id)
+    }
+
+    func rollbackSkill(_ id: String, version: String) {
+        try? skillStore.rollback(id: id, version: version)
+        reloadSkills()
+    }
+
     @discardableResult
     func installSkill(from url: URL) throws -> Skill {
         let skill = try skillStore.install(from: url)

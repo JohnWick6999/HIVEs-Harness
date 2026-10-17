@@ -164,6 +164,45 @@ struct SkillTests {
         #expect(reloaded.load(id: "old-skill") == nil)
     }
 
+    @Test("覆盖安装自动备份,可回滚到旧版本")
+    func versionRollback() throws {
+        let userDir = try makeSkillDirectory()
+        let sourceRoot = try makeSkillDirectory()
+        let source = try writeSkill(in: sourceRoot, folder: "pkg", id: "versioned", name: "V1")
+
+        let store = SkillStore(userDirectory: userDir)
+        _ = try store.install(from: source)
+        let v1Body = try #require(store.load(id: "versioned")?.body)
+
+        let manifest = source.appendingPathComponent("SKILL.md")
+        try """
+        ---
+        id: versioned
+        name: V2
+        description: v2
+        ---
+
+        # 流程 V2
+        1. 新步骤
+        """.write(to: manifest, atomically: true, encoding: .utf8)
+        _ = try store.install(from: source)
+        let v2Body = try #require(store.load(id: "versioned")?.body)
+        #expect(v1Body != v2Body)
+
+        let versions = store.versions(id: "versioned")
+        #expect(!versions.isEmpty)
+        let backup = try #require(versions.first)
+        try store.rollback(id: "versioned", version: backup.version)
+        #expect(store.load(id: "versioned")?.body == v1Body)
+
+        let ledger = try String(
+            contentsOf: userDir.appendingPathComponent("_ledger.jsonl"),
+            encoding: .utf8
+        )
+        #expect(ledger.contains("\"action\":\"install\""))
+        #expect(ledger.contains("\"action\":\"rollback\""))
+    }
+
     @Test("技能工具在只读模式下可用")
     func workModeAllowsSkills() {
         #expect(WorkMode.chat.allows(tool: "list_skills"))
