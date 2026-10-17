@@ -95,6 +95,71 @@ public struct RunRecord: Codable, Sendable, Equatable, Identifiable {
 }
 
 /// 线程安全的事件收集器;由 AgentLoop 每轮创建。
+/// 从运行事件中还原的一组问答。
+public struct RunQuestionAnswer: Sendable, Equatable, Identifiable {
+    public let id: UUID
+    public let question: String
+    public let context: String
+    public let answer: String?
+    public let askedAt: Date
+    public let answeredAt: Date?
+
+    public init(
+        id: UUID,
+        question: String,
+        context: String = "",
+        answer: String? = nil,
+        askedAt: Date,
+        answeredAt: Date? = nil
+    ) {
+        self.id = id
+        self.question = question
+        self.context = context
+        self.answer = answer
+        self.askedAt = askedAt
+        self.answeredAt = answeredAt
+    }
+}
+
+public extension RunRecord {
+    /// 按 question → answer 顺序配对;未回答的问题保留在末尾。
+    var questionAnswers: [RunQuestionAnswer] {
+        var result: [RunQuestionAnswer] = []
+        var pending: RunEvent?
+        for event in events {
+            switch event.kind {
+            case .question:
+                if let pending {
+                    result.append(pair(pending, nil))
+                }
+                pending = event
+            case .answer:
+                if let question = pending {
+                    result.append(pair(question, event))
+                    pending = nil
+                }
+            default:
+                break
+            }
+        }
+        if let pending {
+            result.append(pair(pending, nil))
+        }
+        return result
+    }
+
+    private func pair(_ question: RunEvent, _ answer: RunEvent?) -> RunQuestionAnswer {
+        RunQuestionAnswer(
+            id: question.id,
+            question: question.detail,
+            context: question.metadata["context"] ?? "",
+            answer: answer?.detail,
+            askedAt: question.timestamp,
+            answeredAt: answer?.timestamp
+        )
+    }
+}
+
 public final class RunRecorder: @unchecked Sendable {
     public let id: String
     public let threadID: String

@@ -59,6 +59,40 @@ public struct ClarificationAnswer: Sendable, Equatable {
 
 public typealias ClarificationHandler = @Sendable (ClarificationRequest) async -> ClarificationAnswer
 
+/// 主动提问偏好:关闭 / 平衡 / 积极。
+public enum ClarificationMode: String, Codable, Sendable, CaseIterable, Equatable {
+    case off
+    case balanced
+    case eager
+
+    public var title: String {
+        switch self {
+        case .off: return "关闭"
+        case .balanced: return "平衡"
+        case .eager: return "积极"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .off:
+            return "不主动提问;遇到歧义时自行选择可逆的默认方案。"
+        case .balanced:
+            return "只在关键歧义处提问,每轮最多 2 个;先尝试推断。"
+        case .eager:
+            return "更主动确认方向,每轮最多 4 个;仍会先尝试从上下文推断。"
+        }
+    }
+
+    public var maxQuestions: Int {
+        switch self {
+        case .off: return 0
+        case .balanced: return 2
+        case .eager: return 4
+        }
+    }
+}
+
 /// 每轮运行的提问预算与查重,避免“问题轰炸”。
 public actor ClarificationGate {
     private let maxQuestions: Int

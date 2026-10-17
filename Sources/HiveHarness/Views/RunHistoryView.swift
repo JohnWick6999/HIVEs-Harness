@@ -10,6 +10,12 @@ struct RunHistoryView: View {
     @State private var replay: RunReplay?
     @State private var isPlaying = false
     @State private var playTask: Task<Void, Never>?
+    @State private var timelineTab: TimelineTab = .events
+
+    private enum TimelineTab: Hashable {
+        case events
+        case qa
+    }
 
     private var selected: RunRecord? {
         state.runs.first { $0.id == selectedID } ?? state.runs.first
@@ -98,6 +104,7 @@ struct RunHistoryView: View {
         }
         .onChange(of: selectedID) { _, _ in
             stop()
+            timelineTab = .events
             if let run = selected {
                 replay = RunReplay(run: run, cursor: run.events.count)
             } else {
@@ -172,6 +179,7 @@ struct RunHistoryView: View {
 
     private func timeline(_ run: RunRecord) -> some View {
         let active = replay(for: run)
+        let qa = run.questionAnswers
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -207,22 +215,86 @@ struct RunHistoryView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Spacer()
+                if !qa.isEmpty {
+                    Picker("视图", selection: $timelineTab) {
+                        Text("事件").tag(TimelineTab.events)
+                        Text("问答 \(qa.count)").tag(TimelineTab.qa)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 150)
+                }
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 10)
             .padding(.bottom, 8)
 
             Divider()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(active.visibleEvents) { event in
-                        eventRow(event)
+            if !qa.isEmpty, timelineTab == .qa {
+                qaList(qa)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(active.visibleEvents) { event in
+                            eventRow(event)
+                        }
                     }
+                    .padding(12)
                 }
-                .padding(12)
             }
         }
         .frame(minWidth: 520)
+    }
+
+    private func qaList(_ items: [RunQuestionAnswer]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(items) { item in
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            qaBadge("问", color: HiveTheme.amberDeep)
+                            Text(item.askedAt, style: .time)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Spacer()
+                            if let answeredAt = item.answeredAt {
+                                Text("答于 \(answeredAt.formatted(date: .omitted, time: .shortened))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        Text(item.question)
+                            .font(.callout.weight(.medium))
+                            .textSelection(.enabled)
+                        if !item.context.isEmpty {
+                            Text(item.context)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        Divider()
+                        HStack(alignment: .top, spacing: 7) {
+                            qaBadge("答", color: .green)
+                            Text(item.answer ?? "未回答(用户跳过或运行中断)")
+                                .font(.callout)
+                                .foregroundStyle(item.answer == nil ? .secondary : .primary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .hiveCard(padding: 11, corner: 12)
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private func qaBadge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.14), in: Capsule())
+            .foregroundStyle(color)
     }
 
     private func eventRow(_ event: RunEvent) -> some View {

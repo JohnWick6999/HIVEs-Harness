@@ -475,6 +475,7 @@ final class AppState {
                 guard let self else { return .cancelled }
                 return await self.requestClarification(request)
             },
+            clarificationMode: config.agent.clarificationMode,
             extraTools: mcpTools + skillTools,
             skillCatalog: skillCatalogText
         )
@@ -562,6 +563,7 @@ final class AppState {
                 guard let self else { return .cancelled }
                 return await self.requestClarification(request)
             },
+            clarificationMode: config.agent.clarificationMode,
             extraTools: mcpTools + skillTools,
             skillCatalog: skillCatalogText
         )

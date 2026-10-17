@@ -110,6 +110,48 @@ struct ClarificationTests {
         #expect(withSystem.contains("[主动澄清]"))
     }
 
+    @Test("提问偏好:关闭不暴露工具,积极提高预算")
+    func modeBehavior() async throws {
+        #expect(ClarificationMode.off.maxQuestions == 0)
+        #expect(ClarificationMode.eager.maxQuestions == 4)
+
+        let ws = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hiveharness-mode-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
+        let dbDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hiveharness-mode-db-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
+        let store = try SQLiteStore(path: dbDir.appendingPathComponent("agent.db").path)
+
+        let offClient = MockLLMClient(responses: [LLMResponse(content: "ok")])
+        let offLoop = AgentLoop(
+            store: store,
+            config: .default,
+            keychain: KeychainStore(service: "com.hiveharness.test.\(UUID().uuidString)"),
+            workspace: ws,
+            clientOverride: offClient,
+            clarificationHandler: { _ in .cancelled },
+            clarificationMode: .off
+        )
+        _ = try await offLoop.invoke(message: "hi")
+        #expect(offClient.capturedToolNames().first?.contains("ask_user") == false)
+        #expect((offClient.capturedMessages().first?.first?.content.plainText ?? "").contains("[主动澄清]") == false)
+
+        let eagerClient = MockLLMClient(responses: [LLMResponse(content: "ok")])
+        let eagerLoop = AgentLoop(
+            store: store,
+            config: .default,
+            keychain: KeychainStore(service: "com.hiveharness.test.\(UUID().uuidString)"),
+            workspace: ws,
+            clientOverride: eagerClient,
+            clarificationHandler: { _ in .cancelled },
+            clarificationMode: .eager
+        )
+        _ = try await eagerLoop.invoke(message: "hi")
+        #expect(eagerClient.capturedToolNames().first?.contains("ask_user") == true)
+        #expect((eagerClient.capturedMessages().first?.first?.content.plainText ?? "").contains("每轮最多 4"))
+    }
+
     @Test("AgentLoop 提问后继续执行并写入运行日志")
     func agentLoopAsksAndContinues() async throws {
         let ws = FileManager.default.temporaryDirectory

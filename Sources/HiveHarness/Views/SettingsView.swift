@@ -184,6 +184,14 @@ private struct AgentSettingsView: View {
                     in: 1...20
                 )
                 Toggle("成功后自动提炼技能提案", isOn: $state.config.agent.autoEvolveSkills)
+                Picker("主动提问", selection: $state.config.agent.clarificationMode) {
+                    ForEach(ClarificationMode.allCases, id: \.rawValue) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Text(state.config.agent.clarificationMode.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Section("存储") {

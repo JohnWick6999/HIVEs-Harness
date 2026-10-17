@@ -63,6 +63,46 @@ struct RunJournalTests {
         #expect(runs.first?.events.contains { $0.kind == .error } == true)
     }
 
+    @Test("问答事件配对:已回答/未回答")
+    func questionAnswerPairing() {
+        let answered = RunRecord(
+            id: "run-qa",
+            threadID: "t",
+            persona: "assistant",
+            status: .completed,
+            events: [
+                RunEvent(seq: 1, kind: .started, title: "开始"),
+                RunEvent(
+                    seq: 2,
+                    kind: .question,
+                    title: "等待用户回答",
+                    detail: "用哪种语言?",
+                    metadata: ["context": "影响发布方式"]
+                ),
+                RunEvent(seq: 3, kind: .answer, title: "用户回答", detail: "用户选择: Swift"),
+                RunEvent(seq: 4, kind: .finished, title: "完成"),
+            ]
+        )
+        let pairs = answered.questionAnswers
+        #expect(pairs.count == 1)
+        #expect(pairs[0].question == "用哪种语言?")
+        #expect(pairs[0].context == "影响发布方式")
+        #expect(pairs[0].answer == "用户选择: Swift")
+        #expect(pairs[0].answeredAt != nil)
+
+        let unanswered = RunRecord(
+            id: "run-qa-2",
+            threadID: "t",
+            persona: "assistant",
+            status: .completed,
+            events: [
+                RunEvent(seq: 1, kind: .question, title: "等待用户回答", detail: "继续吗?"),
+            ]
+        )
+        #expect(unanswered.questionAnswers.count == 1)
+        #expect(unanswered.questionAnswers[0].answer == nil)
+    }
+
     @Test("事件回放游标:单步/跳转/重置")
     func replayCursor() {
         let run = RunRecord(

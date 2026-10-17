@@ -12,6 +12,7 @@ struct AppConfigTests {
         #expect(config.llm.temperature == 0.4)
         #expect(config.agent.maxRounds == 6)
         #expect(config.agent.defaultPersona == "assistant")
+        #expect(config.agent.clarificationMode == .balanced)
     }
 
     @Test("JSON 编解码往返")
@@ -20,6 +21,7 @@ struct AppConfigTests {
         config.llm.model = "deepseek-chat"
         config.llm.baseURL = "https://api.example.com/v1"
         config.agent.maxRounds = 10
+        config.agent.clarificationMode = .eager
 
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
@@ -40,7 +42,7 @@ struct AppConfigTests {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
         var config = AppConfig.default
-        config.agent.defaultPersona = "azuma"
+        config.agent.defaultPersona = "engineer"
         let store = ConfigStore(fileURL: url)
         try store.save(config)
         #expect(store.load() == config)

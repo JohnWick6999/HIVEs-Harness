@@ -86,6 +86,8 @@ public actor AgentLoop {
     private let approvalHandler: ApprovalHandler?
     /// 主动澄清回调(由平台壳注入);nil 时不暴露 ask_user 工具
     private let clarificationHandler: ClarificationHandler?
+    /// 主动提问偏好(关闭时不注册工具)
+    private let clarificationMode: ClarificationMode
     /// 测试注入:按解析后的模型创建客户端(优先于真实网络客户端)
     private let clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)?
     /// 额外工具(MCP 适配器等),随内置工具一起注册
@@ -109,6 +111,7 @@ public actor AgentLoop {
         toolsOverride: [any Tool]? = nil,
         approvalHandler: ApprovalHandler? = nil,
         clarificationHandler: ClarificationHandler? = nil,
+        clarificationMode: ClarificationMode = .balanced,
         clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)? = nil,
         extraTools: [any Tool] = [],
         skillCatalog: String = ""
@@ -122,6 +125,7 @@ public actor AgentLoop {
         self.toolsOverride = toolsOverride
         self.approvalHandler = approvalHandler
         self.clarificationHandler = clarificationHandler
+        self.clarificationMode = clarificationMode
         self.clientFactory = clientFactory
         self.extraTools = extraTools
         self.skillCatalog = skillCatalog
@@ -242,15 +246,25 @@ public actor AgentLoop {
         let planText = plan.promptText
         let planSection = planText.isEmpty ? "" : "\n\n\(planText)"
         let clarificationSection: String
-        if clarificationHandler == nil {
+        if clarificationHandler == nil || clarificationMode.maxQuestions == 0 {
             clarificationSection = ""
         } else {
+            let eagerness: String
+            switch clarificationMode {
+            case .off:
+                eagerness = ""
+            case .balanced:
+                eagerness = "只在关键歧义处提问;能推断就不要问。"
+            case .eager:
+                eagerness = "在方向不明确时更主动确认;但仍要先尝试推断,不要问低价值问题。"
+            }
             clarificationSection = """
 
             [主动澄清]
             当关键信息缺失,且不同选择会显著改变方案时,调用 ask_user 向用户提问。
-            - 先尝试从上下文、记忆和工具结果推断;能确定就不要问。
-            - 每轮最多 2 个问题;不要用提问替代执行,也不要问“是否继续”这类低价值问题。
+            - 先尝试从上下文、记忆和工具结果推断。
+            - \(eagerness)
+            - 每轮最多 \(clarificationMode.maxQuestions) 个问题;不要用提问替代执行,也不要问“是否继续”这类低价值问题。
             - 优先给 2-4 个具体选项,可标记 recommended;始终允许用户自由补充。
             - 说明为什么需要这个信息,以及不同选择的影响。
             - 用户跳过后,采用最保守、可逆的默认方案继续,并明确说明假设。
@@ -390,8 +404,13 @@ public actor AgentLoop {
                 persona: session.persona
             ),
         ]
-        if let clarificationHandler {
-            tools.append(AskUserTool(handler: clarificationHandler))
+        if let clarificationHandler, clarificationMode.maxQuestions > 0 {
+            tools.append(
+                AskUserTool(
+                    handler: clarificationHandler,
+                    gate: ClarificationGate(maxQuestions: clarificationMode.maxQuestions)
+                )
+            )
         }
         #if os(macOS)
         tools.append(BuiltinTools.RunLocalAgentTool())
