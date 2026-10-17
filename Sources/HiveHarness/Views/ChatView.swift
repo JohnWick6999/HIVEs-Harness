@@ -10,6 +10,7 @@ struct ChatView: View {
     @State private var showRunHistory = false
     @State private var planExpanded = true
     @State private var showContext = false
+    @AppStorage("sidebarExpanded") private var sidebarExpanded = true
     @FocusState private var composerFocused: Bool
     @State private var showUsage = false
 
@@ -17,8 +18,16 @@ struct ChatView: View {
         @Bindable var state = state
         ZStack {
             HiveBackground()
-            VStack(spacing: 0) {
-                header
+            HStack(spacing: 0) {
+                SidebarView(
+                    expanded: $sidebarExpanded,
+                    onMarketplace: { showMarketplace = true },
+                    onWorkbench: { showWorkbench = true },
+                    onRuns: { showRunHistory = true },
+                    onSettings: { showSettings = true }
+                )
+                VStack(spacing: 0) {
+                    header
                 if !state.taskPlan.items.isEmpty {
                     planPanel
                         .padding(.horizontal, 12)
@@ -38,7 +47,8 @@ struct ChatView: View {
                     approvalBar(approval)
                 }
                 inputBar
-                usageBar
+                    usageBar
+                }
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -73,8 +83,6 @@ struct ChatView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            HiveMark(size: 24)
-
             Menu {
                 ForEach(state.availablePersonas) { persona in
                     Button {
@@ -124,33 +132,6 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Button {
-                showRunHistory = true
-            } label: {
-                Image(systemName: "clock.arrow.circlepath")
-            }
-            .help("运行日志")
-
-            Button {
-                showWorkbench = true
-            } label: {
-                Image(systemName: "wrench.and.screwdriver")
-            }
-            .help("工作台")
-
-            Button {
-                showMarketplace = true
-            } label: {
-                Image(systemName: "storefront")
-            }
-            .help("插件市场")
-
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .help("设置")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
