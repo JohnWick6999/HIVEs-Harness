@@ -277,12 +277,12 @@ struct ChatView: View {
                             Circle()
                                 .stroke(.quaternary, lineWidth: 2.5)
                             Circle()
-                                .trim(from: 0, to: min(1, max(0, state.contextState.displayPercent / 100)))
+                                .trim(from: 0, to: contextTrim)
                                 .stroke(usageColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
                         }
                         .frame(width: 16, height: 16)
-                        Text("\(Int(state.contextState.displayPercent.rounded()))%")
+                        Text(contextPercentText)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -295,6 +295,21 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    private var contextPercentText: String {
+        let value = state.contextState.displayPercent
+        if value <= 0 { return "0%" }
+        if value < 0.1 { return "<0.1%" }
+        if value < 1 { return String(format: "%.1f%%", value) }
+        return "\(Int(value.rounded()))%"
+    }
+
+    private var contextTrim: CGFloat {
+        let value = state.contextState.displayPercent
+        guard state.contextState.displayTokens > 0 else { return 0 }
+        // 100M 窗口下 0.02% 的圆弧几乎不可见;保留一个最小可见弧。
+        return min(1, max(0.006, value / 100))
     }
 
     private var usageColor: Color {
@@ -335,7 +350,7 @@ struct ChatView: View {
                 }
                 GridRow {
                     Text("显示占用")
-                    Text("\(state.contextState.displayTokens) / \(state.contextState.contextLimit) · \(String(format: "%.1f", state.contextState.displayPercent))%")
+                    Text("\(state.contextState.displayTokens.formatted()) / \(state.contextState.contextLimit.formatted()) · \(contextPercentText)")
                         .monospacedDigit()
                 }
                 GridRow {

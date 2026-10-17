@@ -177,7 +177,7 @@ struct ModelsSettingsView: View {
                         TextField("展示名", text: binding.name)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 120)
-                        TextField("模型名", text: binding.model)
+                        TextField("模型名", text: modelNameBinding(id))
                             .textFieldStyle(.roundedBorder)
                         Picker("", selection: binding.provider) {
                             ForEach(providerIDs, id: \.self) { providerID in
@@ -196,12 +196,21 @@ struct ModelsSettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.red)
                     }
+                    HStack(spacing: 10) {
+                        Toggle("自动上下文", isOn: autoContextBinding(id))
+                            .font(.caption)
+                        if let detected = ModelContextResolver.contextWindow(for: binding.wrappedValue.model) {
+                            Text("检测到 \(ModelContextResolver.formatted(detected))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     HStack {
                         Stepper(
-                            "窗口 \(binding.wrappedValue.contextWindow)",
-                            value: binding.contextWindow,
-                            in: 1_024...1_000_000,
-                            step: 1_024
+                            "窗口 \(ModelContextResolver.formatted(binding.wrappedValue.contextWindow))",
+                            value: contextWindowBinding(id),
+                            in: 1_024...200_000_000,
+                            step: 1_048_576
                         )
                         Stepper(
                             "输出 \(binding.wrappedValue.maxOutputTokens)",
@@ -222,6 +231,52 @@ struct ModelsSettingsView: View {
     }
 
     // MARK: - Bindings
+
+    private func modelNameBinding(_ id: String) -> Binding<String> {
+        Binding(
+            get: { state.config.models[id]?.model ?? "" },
+            set: { newValue in
+                guard var model = state.config.models[id] else { return }
+                let old = model.model
+                model.model = newValue
+                if model.name.isEmpty || model.name == old {
+                    model.name = newValue
+                }
+                if model.autoContextWindow,
+                   let detected = ModelContextResolver.contextWindow(for: newValue) {
+                    model.contextWindow = detected
+                }
+                state.config.models[id] = model
+            }
+        )
+    }
+
+    private func autoContextBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { state.config.models[id]?.autoContextWindow ?? true },
+            set: { enabled in
+                guard var model = state.config.models[id] else { return }
+                model.autoContextWindow = enabled
+                if enabled, let detected = ModelContextResolver.contextWindow(for: model.model) {
+                    model.contextWindow = detected
+                }
+                state.config.models[id] = model
+            }
+        )
+    }
+
+    private func contextWindowBinding(_ id: String) -> Binding<Int> {
+        Binding(
+            get: { state.config.models[id]?.contextWindow ?? 32_768 },
+            set: { value in
+                guard var model = state.config.models[id] else { return }
+                model.contextWindow = max(1_024, value)
+                // 手动调窗口意味着接管自动检测。
+                model.autoContextWindow = false
+                state.config.models[id] = model
+            }
+        )
+    }
 
     private func providerBinding(_ id: String) -> Binding<ProviderConfig> {
         Binding(

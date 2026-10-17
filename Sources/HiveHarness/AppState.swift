@@ -165,6 +165,7 @@ final class AppState {
         skills = skillStore.all()
         skillProposals = skillEvolver.proposals()
         pluginProjects = pluginStudio.listProjects()
+        refreshContextLimit()
 
         if config.gateway.enabled {
             Task { [weak self] in
@@ -748,10 +749,13 @@ final class AppState {
 
     /// 持久化配置与 API Key
     func saveConfig() {
-        try? configStore.save(config)
+        let normalized = config.normalized()
+        config = normalized
+        try? configStore.save(normalized)
         if !apiKey.isEmpty {
             try? keychain.setString(apiKey, forKey: "llm.api_key")
         }
+        refreshContextLimit()
     }
 
     // MARK: - 模型配置
@@ -1078,6 +1082,27 @@ final class AppState {
             contextState = state
         }
         try? store.saveContextState(state, threadID: threadID, persona: persona)
+    }
+
+    /// 根据当前默认模型自动刷新会话上下文窗口与预算。
+    func refreshContextLimit() {
+        let normalized = config.normalized()
+        guard let group = normalized.modelGroups[normalized.defaultModelGroup],
+              let modelID = group.models.first,
+              let model = normalized.models[modelID]
+        else { return }
+        let limit = max(1_024, model.contextWindow)
+        var state = contextState
+        state.contextLimit = limit
+        state.budget = max(
+            512,
+            limit - min(model.maxOutputTokens, max(1, limit / 4))
+        )
+        state.usagePercent = state.estimatedTokens > 0
+            ? min(999, Double(state.estimatedTokens) / Double(limit) * 100)
+            : 0
+        contextState = state
+        try? store.saveContextState(state, threadID: threadID, persona: selectedPersona)
     }
 
     // MARK: - AI 用量

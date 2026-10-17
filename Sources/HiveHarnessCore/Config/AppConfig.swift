@@ -173,6 +173,19 @@ public struct AppConfig: Codable, Sendable, Equatable {
         if copy.agent.maxRounds == 6 {
             copy.agent.maxRounds = 12
         }
+        for modelID in copy.models.keys {
+            guard var model = copy.models[modelID] else { continue }
+            if model.autoContextWindow,
+               let detected = ModelContextResolver.contextWindow(for: model.model) {
+                model.contextWindow = detected
+            }
+            copy.models[modelID] = model
+        }
+        if let group = copy.modelGroups[copy.defaultModelGroup],
+           let modelID = group.models.first,
+           let model = copy.models[modelID] {
+            copy.llm.contextWindow = model.contextWindow
+        }
         if copy.providers.isEmpty {
             copy.providers = [
                 "default": ProviderConfig(
