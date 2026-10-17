@@ -54,11 +54,10 @@
 |---|---|
 | `Config/` | AppConfig(Codable)、KeychainStore、ModelRegistry(提供商/模型/回退组) |
 | `LLM/` | LLMClient 协议、OpenAI 兼容客户端(SSE 流式)、本地 Ollama 客户端 |
-| `Storage/` | 系统 SQLite3 封装(chat_records/memories/checkpoints/kv_store/task_plans/session_context/sessions)、哈希向量余弦检索 |
+| `Storage/` | 系统 SQLite3 封装(chat_records/memories/checkpoints/kv_store/task_plans/session_context/sessions/runs)、哈希向量余弦检索 |
 | `Tools/` | Tool 协议(async)、注册表、SafePath 工作区沙箱、6 个内置工具 + todowrite/todoread |
-| `Agent/` | AgentLoop actor:工具循环、无 Key 回退、checkpoint、自动记忆;TaskPlan 计划;ContextManager 压缩 |
+| `Agent/` | AgentLoop actor:工具循环、无 Key 回退、checkpoint、自动记忆;TaskPlan 计划;ContextManager 压缩;RunRecorder 运行日志 |
 | `Persona/` | Persona 模型 + 5 内置人格(Bundle 资源,id=文件名) |
-| `Agent/` 运行日志 | RunRecorder/RunRecord,SQLite runs 表,时间线与导出 |
 | `Workbench/` | 工作区文件浏览、Git 变更、Shell(Process + 超时 + 输出上限) |
 | `Marketplace/` | GitHub / ModelScope 目录适配、链接解析、统一卡片、SKILL.md 安装器 |
 | `Gateway/` | HTTP/1.1 解析、OpenAI 兼容路由、NWListener 本地网关 |
@@ -148,6 +147,22 @@ swift run ShizukuClaw
 ```
 
 MCP 工具名会带 `mcp__<server>__` 前缀;只有**完全控制**模式会把它们暴露给模型,每次调用前都要在对话里审批。设置 → MCP 可直接编辑并重载。
+
+### 插件市场 / 自进化 / 运行日志
+
+- **插件市场**:顶栏 🏪 → 搜索 / 切换来源(GitHub、魔搭、内置)→ 点卡片安装。支持粘贴 GitHub / ModelScope 链接导入;安装前会展示将写入的 `SKILL.md`、风险提示与覆盖项。首版只安装 `SKILL.md`,不执行仓库脚本。
+- **技能自进化**:设置 → 技能,打开「自动提炼」;每累计 10 次工具迭代,后台会从成功轨迹生成提案(优先 patch 现有技能)。提案需人工批准,可查看正文、风险提示与将覆盖的旧技能。
+- **运行日志**:顶栏 🕘 → 查看每次运行的模型、工具、审批、上下文压缩事件,可复制 JSON 做审计。日志只存在本地 SQLite。
+
+### 托管到新仓库
+
+```bash
+# 方式一:导出完整 git bundle,离线迁移
+./scripts/export_bundle.sh
+
+# 方式二:先在 GitHub 创建空仓库(不要初始化 README),再推送
+./scripts/publish_new_repo.sh git@github.com:<user>/<repo>.git main
+```
 
 ## 📂 目录结构
 
