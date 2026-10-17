@@ -64,7 +64,7 @@ public struct AppConfig: Codable, Sendable, Equatable {
         public var clarificationMode: ClarificationMode
 
         public init(
-            maxRounds: Int = 6,
+            maxRounds: Int = 12,
             systemPrompt: String = "你是一个智能助手,请根据用户意图选择工具或直接回答。",
             defaultPersona: String = "assistant",
             workMode: WorkMode = .sandbox,
@@ -86,7 +86,8 @@ public struct AppConfig: Codable, Sendable, Equatable {
         /// 兼容旧配置文件:workMode 缺失时按安全模式处理。
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            maxRounds = try container.decodeIfPresent(Int.self, forKey: .maxRounds) ?? 6
+            // 旧默认 6 对多工具任务偏小;缺失时使用 12。
+            maxRounds = try container.decodeIfPresent(Int.self, forKey: .maxRounds) ?? 12
             systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt)
                 ?? "你是一个智能助手,请根据用户意图选择工具或直接回答。"
             defaultPersona = try container.decodeIfPresent(String.self, forKey: .defaultPersona) ?? "assistant"
@@ -168,6 +169,10 @@ public struct AppConfig: Codable, Sendable, Equatable {
     /// 把旧版单模型配置迁移成 provider/model/group,并补齐缺失的默认值。
     public func normalized() -> AppConfig {
         var copy = self
+        // 一次性迁移旧默认 6,避免已有配置长期停在低轮数。
+        if copy.agent.maxRounds == 6 {
+            copy.agent.maxRounds = 12
+        }
         if copy.providers.isEmpty {
             copy.providers = [
                 "default": ProviderConfig(

@@ -181,7 +181,7 @@ private struct AgentSettingsView: View {
                 Stepper(
                     "最大工具轮数:\(state.config.agent.maxRounds)",
                     value: $state.config.agent.maxRounds,
-                    in: 1...20
+                    in: 1...40
                 )
                 Toggle("成功后自动提炼技能提案", isOn: $state.config.agent.autoEvolveSkills)
                 Picker("主动提问", selection: $state.config.agent.clarificationMode) {
