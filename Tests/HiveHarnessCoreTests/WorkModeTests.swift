@@ -43,6 +43,31 @@ private func makeModeFixture(
     return (loop, store, ws, mock)
 }
 
+@Suite("审批去重")
+struct ApprovalScopeTests {
+    @Test("同一工具不同参数共享始终允许 key")
+    func sameToolDifferentArguments() {
+        let first = ApprovalRequest(
+            kind: .toolExecution,
+            detail: "http_get\nhttps://a.example",
+            subject: "http_get"
+        )
+        let second = ApprovalRequest(
+            kind: .toolExecution,
+            detail: "http_get\nhttps://b.example",
+            subject: "http_get"
+        )
+        #expect(first.key == second.key)
+
+        let otherTool = ApprovalRequest(
+            kind: .toolExecution,
+            detail: "run_local_agent\ncodex",
+            subject: "run_local_agent"
+        )
+        #expect(first.key != otherTool.key)
+    }
+}
+
 @Suite("工作模式与审批")
 struct WorkModeTests {
     @Test("模式工具矩阵")

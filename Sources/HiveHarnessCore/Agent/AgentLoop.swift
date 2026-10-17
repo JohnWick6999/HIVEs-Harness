@@ -898,7 +898,8 @@ public actor AgentLoop {
         if mode.requiresExecutionApproval, WorkMode.requiresExecutionApproval(for: call.name) {
             let decision = await askApproval(
                 .toolExecution,
-                detail: "\(call.name)\n\(argumentText)"
+                detail: "\(call.name)\n\(argumentText)",
+                subject: call.name
             )
             recorder.add(
                 .approval,
@@ -979,9 +980,15 @@ public actor AgentLoop {
     }
 
     /// 请求审批;未注入处理器时默认拒绝(安全兜底)。
-    private func askApproval(_ kind: ApprovalKind, detail: String) async -> ApprovalDecision {
+    private func askApproval(
+        _ kind: ApprovalKind,
+        detail: String,
+        subject: String? = nil
+    ) async -> ApprovalDecision {
         guard let approvalHandler else { return .reject }
-        return await approvalHandler(ApprovalRequest(kind: kind, detail: detail))
+        return await approvalHandler(
+            ApprovalRequest(kind: kind, detail: detail, subject: subject)
+        )
     }
 
     // MARK: - 任务计划生命周期
