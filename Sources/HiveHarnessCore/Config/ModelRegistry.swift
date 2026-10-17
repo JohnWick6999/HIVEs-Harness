@@ -42,6 +42,8 @@ public struct ModelConfig: Codable, Sendable, Equatable, Identifiable {
     public var contextWindow: Int
     public var maxOutputTokens: Int
     public var temperature: Double
+    /// 是否根据模型名自动匹配上下文窗口。
+    public var autoContextWindow: Bool
 
     public init(
         id: String,
@@ -53,7 +55,8 @@ public struct ModelConfig: Codable, Sendable, Equatable, Identifiable {
         auxiliaryOnly: Bool = false,
         contextWindow: Int = 32_768,
         maxOutputTokens: Int = 4_096,
-        temperature: Double = 0.4
+        temperature: Double = 0.4,
+        autoContextWindow: Bool = true
     ) {
         self.id = id
         self.provider = provider
@@ -65,6 +68,31 @@ public struct ModelConfig: Codable, Sendable, Equatable, Identifiable {
         self.contextWindow = contextWindow
         self.maxOutputTokens = maxOutputTokens
         self.temperature = temperature
+        self.autoContextWindow = autoContextWindow
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, provider, model, name, capabilities, enabled, auxiliaryOnly
+        case contextWindow, maxOutputTokens, temperature, autoContextWindow
+    }
+
+    /// 旧配置没有 autoContextWindow 时默认开启;缺失 contextWindow 时尝试自动检测。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        provider = try container.decode(String.self, forKey: .provider)
+        model = try container.decode(String.self, forKey: .model)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? model
+        capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities)
+            ?? ["chat", "tools"]
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        auxiliaryOnly = try container.decodeIfPresent(Bool.self, forKey: .auxiliaryOnly) ?? false
+        autoContextWindow = try container.decodeIfPresent(Bool.self, forKey: .autoContextWindow) ?? true
+        contextWindow = try container.decodeIfPresent(Int.self, forKey: .contextWindow)
+            ?? ModelContextResolver.contextWindow(for: model)
+            ?? 32_768
+        maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens) ?? 4_096
+        temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.4
     }
 
     public var isAgentCapable: Bool {
@@ -175,7 +203,12 @@ public struct ModelRegistry: Sendable {
         let stored = (try? keychain.string(forKey: Self.apiKeyKey(providerID: provider.id))) ?? nil
         let legacy = (try? keychain.string(forKey: "llm.api_key")) ?? nil
         let apiKey = (stored?.isEmpty == false ? stored : legacy) ?? ""
-        return ResolvedModel(id: modelID, provider: provider, model: model, apiKey: apiKey)
+        var effective = model
+        if effective.autoContextWindow,
+           let detected = ModelContextResolver.contextWindow(for: effective.model) {
+            effective.contextWindow = detected
+        }
+        return ResolvedModel(id: modelID, provider: provider, model: effective, apiKey: apiKey)
     }
 
     /// 提供商 API Key 在钥匙串中的键名。
