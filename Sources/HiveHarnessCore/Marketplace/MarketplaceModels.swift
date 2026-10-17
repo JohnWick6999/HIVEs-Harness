@@ -160,7 +160,7 @@ extension MarketplaceError: LocalizedError {
         case .invalidLink(let raw): return "无法识别的链接: \(raw)"
         case .unsupportedSource(let source): return "暂不支持的市场来源: \(source)"
         case .http(let code, let message): return "请求失败(HTTP \(code)): \(message)"
-        case .rateLimited(let message): return "GitHub 限流: \(message)"
+        case .rateLimited(let message): return "GitHub 限流: \(message)\n请在插件市场右上角设置 GitHub Token(未认证仅 60 次/时)。"
         case .noInstallableSkill: return "没有找到可安装的 SKILL.md"
         case .invalidPackage(let message): return "插件包无效: \(message)"
         }

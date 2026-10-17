@@ -90,6 +90,56 @@ struct MarketplaceTests {
         #expect(MarketplaceLinkParser.parse("https://example.com/x") == nil)
     }
 
+    @Test("安装后的 SKILL.md 可被 Agent 技能工具发现并调用")
+    func installedSkillIsCallable() throws {
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(skillStore: store)
+        let item = MarketplaceItem(
+            id: "github:acme/demo",
+            name: "demo",
+            summary: "演示插件",
+            author: "acme",
+            source: .github,
+            kind: .plugin,
+            installURL: "https://github.com/acme/demo"
+        )
+        let content = """
+        ---
+        id: demo-skill
+        name: 演示技能
+        description: 安装后应能被 Agent 发现
+        version: 1.0.0
+        enabled: true
+        ---
+
+        # 执行步骤
+        1. 读取输入
+        2. 输出结果
+        """
+        let plan = MarketplaceInstallPlan(
+            item: item,
+            files: [
+                MarketplaceInstallFile(
+                    skillID: "demo-skill",
+                    path: "demo-skill/SKILL.md",
+                    content: content
+                ),
+            ],
+            ref: "main"
+        )
+        let installed = try installer.install(plan)
+        #expect(installed.count == 1)
+        #expect(store.load(id: "demo-skill") != nil)
+
+        let list = try SkillTools.ListSkillsTool(store: store).run(arguments: [:])
+        #expect(list.text.contains("demo-skill"))
+
+        let run = try SkillTools.RunSkillTool(store: store).run(arguments: [
+            "skill_id": AnyCodable("demo-skill"),
+        ])
+        #expect(run.text.contains("读取输入"))
+    }
+
     @Test("链接解析:tree / blob / raw 子路径")
     func linkSubpathParsing() {
         #expect(

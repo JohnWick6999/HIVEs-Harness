@@ -379,6 +379,9 @@ plugin-studio/<id>/
 ## 🏪 插件市场 / 自进化 / 运行日志
 
 - **插件市场**:顶栏 🏪 → 搜索或切换 GitHub / 魔搭 / 内置;支持粘贴链接导入、Claude `marketplace.json` 展开、子目录/多技能包安装、MCP 清单预检、Git blob/Sha256 校验、来源清单、单个/批量更新。
+- **安装后 Agent 能调用**:安装的 `SKILL.md` 会进入 `list_skills`/`run_skill`;随包 MCP 默认停用,需在设置 → MCP 启用并重载。
+- **GitHub 配额**:右上角钥匙按钮可保存 Token(未认证仅 60 次/时,Token 5000 次/时),Token 惰性从钥匙串装载,无需重启后重填。
+- **限流降级**:已导入的 GitHub 仓库在 API 限流时改用 `codeload.github.com` zip 安装,不消耗 API 配额;搜索仍建议配置 Token。
 - **自进化**:每 10 次工具迭代触发一次反思;优先 patch 现有技能;60 字描述、24k 正文上限、风险模式扫描;人工批准后启用;使用计数与 30 天归档;版本备份/回滚。
 - **运行日志**:顶栏 🕘 → 模型、工具、审批、上下文压缩事件;支持单步/播放回放(纯展示,不重复执行副作用)与 JSON 导出。
 
@@ -409,7 +412,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 220 tests in 46 suites passed
+# 221 tests in 46 suites passed
 ```
 
 ## 🔄 与旧版的关系
