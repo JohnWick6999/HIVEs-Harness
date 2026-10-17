@@ -585,7 +585,8 @@ struct ChatView: View {
                 }
                 .padding(.leading, 56)
                 .padding(.trailing, 18)
-                .padding(.vertical, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
                 .scrollTargetLayout()
             }
             .scrollPosition(id: $scrollPosition, anchor: .top)
