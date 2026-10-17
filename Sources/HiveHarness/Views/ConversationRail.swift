@@ -31,7 +31,7 @@ struct ConversationRail: View {
             )
             .padding(.vertical, -18)
         )
-        .padding(.trailing, 10)
+        .padding(.leading, 6)
     }
 
     private func marker(_ turn: ConversationTurn) -> some View {
@@ -50,11 +50,11 @@ struct ConversationRail: View {
         .onHover { inside in
             hovered = inside ? turn.id : (hovered == turn.id ? nil : hovered)
         }
-        .overlay(alignment: .leading) {
+        .overlay(alignment: .trailing) {
             if hot {
                 preview(turn)
-                    .offset(x: -312)
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    .offset(x: 310)
+                    .transition(.opacity.combined(with: .move(edge: .leading)))
                     .allowsHitTesting(false)
             }
         }
