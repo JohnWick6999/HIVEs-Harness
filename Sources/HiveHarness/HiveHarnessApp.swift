@@ -6,11 +6,12 @@ struct HiveHarnessApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup("main") {
+        WindowGroup("HIVE's Harness", id: "main") {
             ChatView()
                 .environment(appState)
-                .frame(minWidth: 480, minHeight: 560)
+                .frame(minWidth: 720, minHeight: 600)
         }
+        .defaultSize(width: 1040, height: 720)
         .windowResizability(.contentMinSize)
 
         // 菜单栏常驻:随时唤起、快速提问

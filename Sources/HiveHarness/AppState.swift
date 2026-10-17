@@ -22,6 +22,7 @@ final class AppState {
     var contextState: SessionContextState = .empty
     /// 等待用户处理的审批请求
     var pendingApproval: ApprovalRequest?
+    var pendingQuestion: ClarificationRequest?
     /// 当前人格下的会话列表
     var sessions: [SessionRecord] = []
     /// 当前会话 id
@@ -63,6 +64,8 @@ final class AppState {
 
     private var approvalContinuation: CheckedContinuation<ApprovalDecision, Never>?
     private var approvalTimeout: Task<Void, Never>?
+    private var questionContinuation: CheckedContinuation<ClarificationAnswer, Never>?
+    private var questionTimeout: Task<Void, Never>?
     /// “始终允许”去重集合(应用会话内有效)
     private var autoApproved: Set<String> = []
 
@@ -110,9 +113,9 @@ final class AppState {
         skillStore = SkillStore(userDirectory: skillsDir)
         skillEvolver = SkillEvolver(skillsDirectory: skillsDir)
 
-        let githubToken = (try? keychain.string(forKey: "github.token")) ?? ""
-        marketplace = MarketplaceService(githubToken: githubToken)
-        marketplaceInstaller = MarketplaceInstaller(githubToken: githubToken, skillStore: skillStore, mcpDirectory: mcpDir)
+        // 不在启动时读取钥匙串,避免每次重建签名后弹系统授权框;需要时再读。
+        marketplace = MarketplaceService(githubToken: "")
+        marketplaceInstaller = MarketplaceInstaller(githubToken: "", skillStore: skillStore, mcpDirectory: mcpDir)
 
         // 迁移旧工作区文件(Application Support/workspace -> Documents/HiveHarness)
         let legacyWorkspace = base.appendingPathComponent("workspace", isDirectory: true)
@@ -146,7 +149,7 @@ final class AppState {
             }
         }
 
-        apiKey = (try? keychain.string(forKey: "llm.api_key")) ?? ""
+        apiKey = ""
         selectedPersona = loadedConfig.agent.defaultPersona
         store = try! SQLiteStore(path: base.appendingPathComponent("agent.db").path)
 
@@ -422,6 +425,29 @@ final class AppState {
         approvalContinuation = nil
     }
 
+    /// Agent 主动澄清:挂起工具循环,等待 UI 选择/补充。
+    func requestClarification(_ request: ClarificationRequest) async -> ClarificationAnswer {
+        await withCheckedContinuation { continuation in
+            questionContinuation = continuation
+            pendingQuestion = request
+            questionTimeout?.cancel()
+            questionTimeout = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(600))
+                guard !Task.isCancelled else { return }
+                self?.resolveQuestion(.cancelled)
+            }
+        }
+    }
+
+    /// 由问题卡片调用;跳过时传 .cancelled。
+    func resolveQuestion(_ answer: ClarificationAnswer) {
+        questionTimeout?.cancel()
+        questionTimeout = nil
+        pendingQuestion = nil
+        questionContinuation?.resume(returning: answer)
+        questionContinuation = nil
+    }
+
     /// 发送消息并调用 Agent(无 API Key 时核心自动走本地回退)
     func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -444,6 +470,10 @@ final class AppState {
             approvalHandler: { [weak self] request in
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
+            },
+            clarificationHandler: { [weak self] request in
+                guard let self else { return .cancelled }
+                return await self.requestClarification(request)
             },
             extraTools: mcpTools + skillTools,
             skillCatalog: skillCatalogText
@@ -501,6 +531,9 @@ final class AppState {
             if pendingApproval != nil {
                 resolveApproval(.reject)
             }
+            if pendingQuestion != nil {
+                resolveQuestion(.cancelled)
+            }
             touchSession(
                 userText: trimmed,
                 reply: streamedReply,
@@ -524,6 +557,10 @@ final class AppState {
             approvalHandler: { [weak self] request in
                 guard let self else { return .reject }
                 return await self.requestApproval(request)
+            },
+            clarificationHandler: { [weak self] request in
+                guard let self else { return .cancelled }
+                return await self.requestClarification(request)
             },
             extraTools: mcpTools + skillTools,
             skillCatalog: skillCatalogText
@@ -633,7 +670,9 @@ final class AppState {
     /// 持久化配置与 API Key
     func saveConfig() {
         try? configStore.save(config)
-        try? keychain.setString(apiKey, forKey: "llm.api_key")
+        if !apiKey.isEmpty {
+            try? keychain.setString(apiKey, forKey: "llm.api_key")
+        }
     }
 
     // MARK: - 模型配置

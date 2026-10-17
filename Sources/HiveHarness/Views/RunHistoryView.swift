@@ -285,6 +285,8 @@ struct RunHistoryView: View {
         case .model: return "cpu"
         case .tool: return "wrench.and.screwdriver"
         case .approval: return "hand.raised"
+        case .question: return "questionmark.bubble"
+        case .answer: return "checkmark.bubble"
         case .plan: return "checklist"
         case .context: return "gauge"
         case .finished: return "checkmark.circle"
@@ -298,6 +300,8 @@ struct RunHistoryView: View {
         case .model: return .blue
         case .tool: return .accentColor
         case .approval: return .orange
+        case .question: return .purple
+        case .answer: return .green
         case .plan: return .purple
         case .context: return .teal
         case .error: return .red

@@ -18,6 +18,7 @@ struct PersonaStoreTests {
         #expect(personas.count >= 7)
         #expect(personas.allSatisfy { $0.isBuiltin })
         #expect(store.load(id: "assistant") != nil)
+        #expect(store.defaultPersona()?.id == "assistant")
         #expect(store.load(id: "engineer") != nil)
         #expect(store.load(id: "researcher") != nil)
         #expect(store.load(id: "shizuku") == nil)

@@ -84,6 +84,8 @@ public actor AgentLoop {
     private let toolsOverride: [any Tool]?
     /// 审批回调(由平台壳注入);nil 时外部写入/执行一律拒绝
     private let approvalHandler: ApprovalHandler?
+    /// 主动澄清回调(由平台壳注入);nil 时不暴露 ask_user 工具
+    private let clarificationHandler: ClarificationHandler?
     /// 测试注入:按解析后的模型创建客户端(优先于真实网络客户端)
     private let clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)?
     /// 额外工具(MCP 适配器等),随内置工具一起注册
@@ -106,6 +108,7 @@ public actor AgentLoop {
         clientOverride: (any LLMClient)? = nil,
         toolsOverride: [any Tool]? = nil,
         approvalHandler: ApprovalHandler? = nil,
+        clarificationHandler: ClarificationHandler? = nil,
         clientFactory: (@Sendable (ResolvedModel) -> any LLMClient)? = nil,
         extraTools: [any Tool] = [],
         skillCatalog: String = ""
@@ -118,6 +121,7 @@ public actor AgentLoop {
         self.clientOverride = clientOverride
         self.toolsOverride = toolsOverride
         self.approvalHandler = approvalHandler
+        self.clarificationHandler = clarificationHandler
         self.clientFactory = clientFactory
         self.extraTools = extraTools
         self.skillCatalog = skillCatalog
@@ -237,6 +241,21 @@ public actor AgentLoop {
         let personaPrompt = personas.load(id: persona)?.buildSystemPrompt() ?? config.agent.systemPrompt
         let planText = plan.promptText
         let planSection = planText.isEmpty ? "" : "\n\n\(planText)"
+        let clarificationSection: String
+        if clarificationHandler == nil {
+            clarificationSection = ""
+        } else {
+            clarificationSection = """
+
+            [主动澄清]
+            当关键信息缺失,且不同选择会显著改变方案时,调用 ask_user 向用户提问。
+            - 先尝试从上下文、记忆和工具结果推断;能确定就不要问。
+            - 每轮最多 2 个问题;不要用提问替代执行,也不要问“是否继续”这类低价值问题。
+            - 优先给 2-4 个具体选项,可标记 recommended;始终允许用户自由补充。
+            - 说明为什么需要这个信息,以及不同选择的影响。
+            - 用户跳过后,采用最保守、可逆的默认方案继续,并明确说明假设。
+            """
+        }
         let mode = config.agent.workMode
         return """
         \(personaPrompt)
@@ -257,6 +276,8 @@ public actor AgentLoop {
         [任务计划]
         多步骤执行任务开始时使用 todowrite 创建具体任务列表,只将当前步骤标为 in_progress,每完成一个步骤就更新。
         验证后才标为 completed。中断或失败时保留未完成状态,不要虚报完成;简单问答不需要计划。
+
+        \(clarificationSection)
 
         [技能]
         需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先查看下方索引,再用 run_skill 加载对应指令后执行。
@@ -369,6 +390,9 @@ public actor AgentLoop {
                 persona: session.persona
             ),
         ]
+        if let clarificationHandler {
+            tools.append(AskUserTool(handler: clarificationHandler))
+        }
         #if os(macOS)
         tools.append(BuiltinTools.RunLocalAgentTool())
         #endif
@@ -779,6 +803,18 @@ public actor AgentLoop {
         }
 
         let arguments = Self.parseArguments(call.arguments)
+        let isClarification = call.name == "ask_user"
+        if isClarification {
+            let question = (arguments["question"]?.value as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let context = arguments["context"]?.value as? String ?? ""
+            recorder.add(
+                .question,
+                title: "等待用户回答",
+                detail: question,
+                metadata: ["context": context]
+            )
+        }
         var ok = true
         let result: ToolResult
         do {
@@ -801,6 +837,14 @@ public actor AgentLoop {
         )
         let output = (trace, message)
         record(output, ok: ok)
+        if isClarification {
+            recorder.add(
+                .answer,
+                title: "用户回答",
+                detail: String(result.text.prefix(500)),
+                ok: true
+            )
+        }
         return output
     }
 

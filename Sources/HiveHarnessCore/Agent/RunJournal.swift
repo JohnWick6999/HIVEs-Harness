@@ -11,6 +11,8 @@ public enum RunEventKind: String, Codable, Sendable, Equatable {
     case model
     case tool
     case approval
+    case question
+    case answer
     case plan
     case context
     case finished

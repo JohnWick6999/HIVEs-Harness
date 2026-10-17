@@ -199,7 +199,7 @@ public struct PersonaStore: Sendable {
     }
 
     public func defaultPersona() -> Persona? {
-        listPersonas().first
+        load(id: "assistant") ?? listPersonas().first
     }
 
     public func isBuiltin(id: String) -> Bool {
@@ -267,8 +267,16 @@ public struct PersonaStore: Sendable {
     // MARK: - 内置/用户加载
 
     private func builtinPersonas() -> [Persona] {
+        let preferred = ["assistant", "engineer", "researcher", "writer", "analyst", "planner", "tutor"]
         let urls = (Bundle.module.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [])
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .sorted { lhs, rhs in
+                let left = lhs.deletingPathExtension().lastPathComponent
+                let right = rhs.deletingPathExtension().lastPathComponent
+                let leftIndex = preferred.firstIndex(of: left) ?? Int.max
+                let rightIndex = preferred.firstIndex(of: right) ?? Int.max
+                if leftIndex != rightIndex { return leftIndex < rightIndex }
+                return left < right
+            }
         return urls.compactMap { url in
             guard let data = try? Data(contentsOf: url),
                   var persona = try? JSONDecoder().decode(Persona.self, from: data)

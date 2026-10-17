@@ -10,23 +10,34 @@ struct ChatView: View {
     @State private var showRunHistory = false
     @State private var planExpanded = true
     @State private var showContext = false
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         @Bindable var state = state
-        VStack(spacing: 0) {
-            header
-            Divider()
-            if !state.taskPlan.items.isEmpty {
-                planPanel
-                Divider()
+        ZStack {
+            HiveBackground()
+            VStack(spacing: 0) {
+                header
+                if !state.taskPlan.items.isEmpty {
+                    planPanel
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                }
+                messageList
+                if let question = state.pendingQuestion {
+                    HiveQuestionCard(
+                        question: question,
+                        onAnswer: { state.resolveQuestion($0) },
+                        onSkip: { state.resolveQuestion(.cancelled) }
+                    )
+                    .id(question.id)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: question.id)
+                }
+                if let approval = state.pendingApproval {
+                    approvalBar(approval)
+                }
+                inputBar
             }
-            messageList
-            Divider()
-            if let approval = state.pendingApproval {
-                approvalBar(approval)
-                Divider()
-            }
-            inputBar
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -44,6 +55,7 @@ struct ChatView: View {
             RunHistoryView()
                 .environment(state)
         }
+        .tint(HiveTheme.amberDeep)
         .onChange(of: state.pendingDraft) { _, draft in
             guard let draft else { return }
             input = draft
@@ -54,7 +66,9 @@ struct ChatView: View {
     // MARK: - 头部
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 9) {
+            HiveMark(size: 24)
+
             Menu {
                 ForEach(state.availablePersonas) { persona in
                     Button {
@@ -133,7 +147,13 @@ struct ChatView: View {
             .help("设置")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(HiveTheme.hairline)
+                .frame(height: 1)
+        }
     }
 
     private var personaName: String {
@@ -241,9 +261,13 @@ struct ChatView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.orange.opacity(0.08))
+        .hiveCard(padding: 10, corner: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(.orange.opacity(0.25), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     // MARK: - 上下文用量
@@ -383,9 +407,7 @@ struct ChatView: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.quaternary.opacity(0.25))
+        .hiveCard(padding: 10, corner: 12)
     }
 
     private func statusIcon(_ status: TaskStatus) -> String {
@@ -414,6 +436,7 @@ struct ChatView: View {
                 LazyVStack(spacing: 10) {
                     if state.messages.isEmpty {
                         emptyHint
+                            .frame(minHeight: 500)
                     }
                     ForEach(state.messages) { message in
                         MessageRow(message: message, assistantName: personaName)
@@ -426,7 +449,8 @@ struct ChatView: View {
                         .frame(height: 1)
                         .id("bottom")
                 }
-                .padding(14)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
             }
             .onChange(of: state.messages.last?.content.plainText) {
                 withAnimation {
@@ -437,58 +461,143 @@ struct ChatView: View {
     }
 
     private var emptyHint: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-            Text("和 \(personaName) 打个招呼吧")
-                .font(.headline)
+        VStack(spacing: 18) {
+            HiveMark(size: 58)
+            VStack(spacing: 6) {
+                Text("把任务交给 HIVE")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                Text("描述目标,HIVE 会判断是否需要工具、计划或向你提问。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(Array(Self.suggestions.enumerated()), id: \.offset) { _, item in
+                    Button {
+                        input = item.prompt
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(spacing: 6) {
+                                Image(systemName: item.icon)
+                                    .foregroundStyle(HiveTheme.amberDeep)
+                                Text(item.title)
+                                    .font(.callout.weight(.semibold))
+                            }
+                            Text(item.prompt)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(11)
+                        .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(HiveTheme.hairline, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 520)
             Text("没有配置 API Key 时,HIVE's Harness 会以本地回退模式回复")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.vertical, 20)
     }
+
+    private static let suggestions: [(icon: String, title: String, prompt: String)] = [
+        ("chevron.left.forwardslash.chevron.right", "审查代码", "审查当前工作区的代码,指出风险并给出可执行的修复建议。"),
+        ("map", "规划项目", "帮我把这个目标拆成可执行的里程碑、任务和风险清单。"),
+        ("magnifyingglass", "调研主题", "调研这个主题,优先一手来源,给出结论、证据和未知项。"),
+        ("text.quote", "整理材料", "把下面的材料整理成结构清晰的简报,保留关键事实。"),
+    ]
 
     private var toolTraceRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "wrench.and.screwdriver")
+                .foregroundStyle(HiveTheme.amberDeep)
             Text("调用了 \(state.lastToolTrace.count) 个工具:\(state.lastToolTrace.map(\.tool).joined(separator: ", "))")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(HiveTheme.card, in: Capsule())
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - 输入栏
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
-            TextField("输入消息…(Enter 发送,Shift+Enter 换行)", text: $input, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .onSubmit {
-                    send()
-                }
-                .disabled(state.isBusy)
+        VStack(spacing: 6) {
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("交给 HIVE 一个任务…", text: $input, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(.body, design: .rounded))
+                    .lineLimit(1...6)
+                    .focused($composerFocused)
+                    .onSubmit {
+                        send()
+                    }
+                    .disabled(state.isBusy)
 
-            if state.isBusy {
-                Button(role: .destructive) {
-                    // Alpha 阶段无取消机制,仅提示
-                } label: {
-                    Image(systemName: "stop.circle")
+                if state.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 2)
                 }
-                .disabled(true)
-            }
 
-            Button(action: send) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 24))
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(
+                            input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isBusy
+                                ? AnyShapeStyle(Color.secondary.opacity(0.25))
+                                : AnyShapeStyle(HiveTheme.gradient),
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(state.isBusy || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("发送 (Enter)")
             }
-            .disabled(state.isBusy || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                Color(nsColor: .controlBackgroundColor).opacity(0.62),
+                in: RoundedRectangle(cornerRadius: HiveTheme.composerCorner, style: .continuous)
+            )
+            .background(
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: HiveTheme.composerCorner, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: HiveTheme.composerCorner, style: .continuous)
+                    .stroke(
+                        composerFocused ? HiveTheme.amber.opacity(0.55) : HiveTheme.hairline,
+                        lineWidth: composerFocused ? 1.5 : 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.16), radius: 18, y: 5)
+
+            HStack(spacing: 4) {
+                Text("Enter 发送 · Shift+Enter 换行")
+                Spacer()
+                Text("\(input.count) 字")
+                    .monospacedDigit()
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
     }
 
     private func send() {
@@ -507,59 +616,135 @@ struct MessageRow: View {
     let assistantName: String
 
     var body: some View {
-        HStack {
-            if message.role == .user {
-                Spacer(minLength: 60)
-            }
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-                if !message.content.plainText.isEmpty {
-                    Text(message.content.plainText)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12))
-                }
-                // 工具产出文件:可点击卡片
-                if !message.fileAttachments.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(message.fileAttachments) { file in
-                            HStack(spacing: 8) {
-                                Button {
-                                    openFile(file.path)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "doc.text")
-                                        Text(file.name)
-                                            .lineLimit(1)
-                                        Image(systemName: "arrow.up.forward.app")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-                                }
-                                .buttonStyle(.plain)
+        if message.role == .user {
+            userRow
+        } else if message.role == .assistant {
+            assistantRow
+        } else {
+            systemRow
+        }
+    }
 
-                                Button {
-                                    revealInFinder(file.path)
-                                } label: {
-                                    Image(systemName: "folder")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help("在 Finder 中显示")
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Text(roleLabel)
+    private var userRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Spacer(minLength: 64)
+            VStack(alignment: .trailing, spacing: 4) {
+                bubble(text: message.content.plainText, isUser: true)
+                Text("你")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            if message.role != .user {
-                Spacer(minLength: 60)
+        }
+    }
+
+    private var assistantRow: some View {
+        HStack(alignment: .top, spacing: 9) {
+            HiveMark(size: 25)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text(assistantName)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text("HIVE")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(HiveTheme.amber.opacity(0.14), in: Capsule())
+                        .foregroundStyle(HiveTheme.amberDeep)
+                }
+                if message.content.plainText.isEmpty {
+                    Text("正在思考…")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 4)
+                } else {
+                    bubble(text: message.content.plainText, isUser: false)
+                }
+                attachments
+            }
+            Spacer(minLength: 40)
+        }
+    }
+
+    private var systemRow: some View {
+        HStack {
+            Image(systemName: "info.circle")
+            Text(message.content.plainText)
+                .textSelection(.enabled)
+            Spacer()
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func bubble(text: String, isUser: Bool) -> some View {
+        bubbleContent(text, isUser: isUser)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                isUser ? HiveTheme.userBubble : HiveTheme.assistantBubble,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(
+                        isUser ? HiveTheme.amber.opacity(0.20) : HiveTheme.hairline,
+                        lineWidth: 1
+                    )
+            )
+    }
+
+    @ViewBuilder
+    private func bubbleContent(_ text: String, isUser: Bool) -> some View {
+        if isUser {
+            Text(text)
+                .font(.system(.body, design: .rounded))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            HiveMarkdownView(text: text)
+        }
+    }
+
+    @ViewBuilder
+    private var attachments: some View {
+        if !message.fileAttachments.isEmpty {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(message.fileAttachments) { file in
+                    HStack(spacing: 7) {
+                        Button {
+                            openFile(file.path)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "doc.text")
+                                    .foregroundStyle(HiveTheme.amberDeep)
+                                Text(file.name)
+                                    .lineLimit(1)
+                                Image(systemName: "arrow.up.forward.app")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6)
+                            .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            revealInFinder(file.path)
+                        } label: {
+                            Image(systemName: "folder")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("在 Finder 中显示")
+                    }
+                }
             }
         }
     }
@@ -571,18 +756,4 @@ struct MessageRow: View {
     private func revealInFinder(_ path: String) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
-
-    private var backgroundColor: Color {
-        message.role == .user ? Color.accentColor.opacity(0.18) : Color.gray.opacity(0.12)
-    }
-
-    private var roleLabel: String {
-        switch message.role {
-        case .user: return "你"
-        case .assistant: return assistantName
-        case .system: return "系统"
-        case .tool: return "工具"
-        }
-    }
-
 }
