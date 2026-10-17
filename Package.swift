@@ -1,4 +1,6 @@
-// swift-tools-version: 6.4
+// swift-tools-version: 6.2
+// 说明:当前用 Swift 6.4(Xcode-beta)开发;清单保持 6.2 以兼容正式版 Xcode
+// (正式版通常落后于 beta 工具链)。代码未使用 6.3+ 专属特性。
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription

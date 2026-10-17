@@ -46,7 +46,7 @@ final class MockLLMClient: LLMClient, @unchecked Sendable {
 func makeAgentFixture(
     responses: [LLMResponse],
     keychain: any KeychainStoring = KeychainStore(service: "com.shizukuclaw.test.\(UUID().uuidString)")
-) throws -> (loop: AgentLoop, store: SQLiteStore, workspace: URL) {
+) throws -> (loop: AgentLoop, store: SQLiteStore, workspace: URL, mock: MockLLMClient) {
     let ws = FileManager.default.temporaryDirectory
         .appendingPathComponent("shizuku-agent-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: ws, withIntermediateDirectories: true)
@@ -56,15 +56,16 @@ func makeAgentFixture(
     try FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
     let store = try SQLiteStore(path: dbDir.appendingPathComponent("agent.db").path)
 
+    let mock = MockLLMClient(responses: responses)
     let loop = AgentLoop(
         store: store,
         config: .default,
         keychain: keychain,
         personas: PersonaStore(),
         workspace: ws,
-        clientOverride: MockLLMClient(responses: responses)
+        clientOverride: mock
     )
-    return (loop, store, ws)
+    return (loop, store, ws, mock)
 }
 
 @Suite("AgentLoop")
@@ -217,7 +218,7 @@ struct AgentLoopTests {
                 text += delta
             case .finished(let result):
                 finished = result
-            case .fallback, .toolCalled, .limitReached:
+            case .fallback, .toolCalled, .limitReached, .planUpdated:
                 break
             }
         }

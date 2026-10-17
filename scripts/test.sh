@@ -10,15 +10,6 @@
 # 用法: scripts/test.sh [swift test 的其余参数]
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-for DEVELOPER in \
-  /Applications/Xcode.app/Contents/Developer \
-  /Applications/Xcode-beta.app/Contents/Developer
-do
-  if [ -d "$DEVELOPER" ]; then
-    export DEVELOPER_DIR="$DEVELOPER"
-    break
-  fi
-done
+source scripts/toolchain.sh
 
 exec swift test "$@"

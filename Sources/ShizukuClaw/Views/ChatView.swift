@@ -5,12 +5,17 @@ struct ChatView: View {
     @Environment(AppState.self) private var state
     @State private var input = ""
     @State private var showSettings = false
+    @State private var planExpanded = true
 
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
             header
             Divider()
+            if !state.taskPlan.items.isEmpty {
+                planPanel
+                Divider()
+            }
             messageList
             Divider()
             inputBar
@@ -77,6 +82,67 @@ struct ChatView: View {
     private var personaName: String {
         state.availablePersonas.first { $0.id == state.selectedPersona }?.meta.name
             ?? state.selectedPersona
+    }
+
+    // MARK: - 任务计划
+
+    private var planPanel: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { planExpanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checklist")
+                        .foregroundStyle(.secondary)
+                    Text("任务计划")
+                        .font(.caption.weight(.semibold))
+                    Text(state.taskPlan.progressText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: planExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if planExpanded {
+                ForEach(state.taskPlan.items) { item in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: statusIcon(item.status))
+                            .font(.caption2)
+                            .foregroundStyle(statusColor(item.status))
+                        Text(item.content)
+                            .font(.caption)
+                            .strikethrough(item.status == .completed, color: .secondary)
+                            .foregroundStyle(item.status == .completed ? .secondary : .primary)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.25))
+    }
+
+    private func statusIcon(_ status: TaskStatus) -> String {
+        switch status {
+        case .pending: return "circle"
+        case .inProgress: return "circle.dotted"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle"
+        }
+    }
+
+    private func statusColor(_ status: TaskStatus) -> Color {
+        switch status {
+        case .pending: return .secondary
+        case .inProgress: return .accentColor
+        case .completed: return .green
+        case .cancelled: return .secondary
+        }
     }
 
     // MARK: - 消息列表

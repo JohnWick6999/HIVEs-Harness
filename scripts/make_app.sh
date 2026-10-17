@@ -3,6 +3,7 @@
 # 用法:scripts/make_app.sh [release|debug]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/toolchain.sh
 
 CONFIG="${1:-debug}"
 APP="build/ShizukuClaw.app"

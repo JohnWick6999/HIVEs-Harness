@@ -48,6 +48,8 @@ public enum AgentStreamEvent: Sendable {
     case chunk(String)
     /// 工具调用轨迹
     case toolCalled(ToolTrace)
+    /// 任务计划变更(UI 实时更新)
+    case planUpdated(TaskPlan)
     /// 本地回退(无 API Key)
     case fallback(String)
     /// 工具轮次上限
@@ -112,6 +114,10 @@ public actor AgentLoop {
         /// 含本轮用户消息的完整历史
         var history: [ChatMessage]
         let memories: [MemoryItem]
+        /// 本轮运行标识(绑定任务计划,防止跨轮串写)
+        let runID: String
+        /// 本轮开始时的任务计划
+        let plan: TaskPlan
         let systemPrompt: String
     }
 
@@ -153,22 +159,34 @@ public actor AgentLoop {
             topK: 5
         )) ?? []
 
+        // 开启本轮计划:覆盖可能残留的 running 标记(崩溃恢复),
+        // runID 只在本次执行内有效,工具写入必须匹配。
+        var plan = (try? store.loadTaskPlan(threadID: thread, persona: current)) ?? .empty
+        let runID = UUID().uuidString
+        plan.runID = runID
+        plan.running = true
+        try? store.saveTaskPlan(plan, threadID: thread, persona: current)
+
         return Session(
             persona: current,
             threadID: thread,
             userText: text,
             history: history,
             memories: memories,
-            systemPrompt: buildSystemPrompt(persona: current, memories: memories)
+            runID: runID,
+            plan: plan,
+            systemPrompt: buildSystemPrompt(persona: current, memories: memories, plan: plan)
         )
     }
 
-    /// 人格 prompt + 长期记忆 + 工具使用约束。
-    private func buildSystemPrompt(persona: String, memories: [MemoryItem]) -> String {
+    /// 人格 prompt + 长期记忆 + 工具使用约束 + 任务计划。
+    private func buildSystemPrompt(persona: String, memories: [MemoryItem], plan: TaskPlan) -> String {
         let memoryText = memories.isEmpty
             ? "暂无长期记忆。"
             : memories.map { "- \($0.content)" }.joined(separator: "\n")
         let personaPrompt = personas.load(id: persona)?.buildSystemPrompt() ?? config.agent.systemPrompt
+        let planText = plan.promptText
+        let planSection = planText.isEmpty ? "" : "\n\n\(planText)"
         return """
         \(personaPrompt)
 
@@ -180,22 +198,26 @@ public actor AgentLoop {
 
         文件工具(list_dir/read_file/write_file)只能访问工作区目录,无法访问桌面、文稿等系统位置。
         若用户要求写到桌面或其他目录,将文件写入工作区,并在回复中明确说明文件的实际完整路径。
+
+        [任务计划]
+        多步骤执行任务开始时使用 todowrite 创建具体任务列表,只将当前步骤标为 in_progress,每完成一个步骤就更新。
+        验证后才标为 completed。中断或失败时保留未完成状态,不要虚报完成;简单问答不需要计划。\(planSection)
         """
     }
 
     // MARK: - 客户端与工具装配
 
     /// 解析客户端:测试注入 > Ollama > OpenAI 兼容;无 Key 时返回本地回退。
-    private func makeRunMode(persona: String, history: [ChatMessage]) -> RunMode {
+    private func makeRunMode(session: Session) -> RunMode {
         let client: any LLMClient
         if let clientOverride {
             client = clientOverride
         } else {
             let apiKey = (try? keychain.string(forKey: "llm.api_key")) ?? ""
             if config.llm.provider != "ollama" && apiKey.isEmpty {
-                let lastUser = history.last(where: { $0.role == .user })?.content.plainText ?? ""
+                let lastUser = session.history.last(where: { $0.role == .user })?.content.plainText ?? ""
                 let reply = """
-                [\(persona)] 已收到:\(lastUser)
+                [\(session.persona)] 已收到:\(lastUser)
                 当前运行传统 Agent 循环。未配置主模型 API Key,因此使用本地回退回复。
                 """
                 return .fallback(reply: reply)
@@ -212,12 +234,12 @@ public actor AgentLoop {
             }
         }
 
-        let (registry, specs) = makeToolRegistry(persona: persona)
+        let (registry, specs) = makeToolRegistry(session: session)
         return .live(client: client, registry: registry, specs: specs)
     }
 
-    private func makeToolRegistry(persona: String) -> (ToolRegistry, [ToolSpec]) {
-        let tools = toolsOverride ?? buildDefaultTools(persona: persona)
+    private func makeToolRegistry(session: Session) -> (ToolRegistry, [ToolSpec]) {
+        let tools = toolsOverride ?? buildDefaultTools(session: session)
         let registry = ToolRegistry()
         for tool in tools {
             registry.register(tool)
@@ -225,14 +247,25 @@ public actor AgentLoop {
         return (registry, tools.map(\.spec))
     }
 
-    /// 内置工具集(绑定当前人格与工作区)
-    private func buildDefaultTools(persona: String) -> [any Tool] {
+    /// 内置工具集(绑定当前人格、工作区、会话与运行标识)
+    private func buildDefaultTools(session: Session) -> [any Tool] {
         var tools: [any Tool] = [
             BuiltinTools.ListDirTool(workspace: workspace),
             BuiltinTools.ReadFileTool(workspace: workspace),
             BuiltinTools.WriteFileTool(workspace: workspace),
-            BuiltinTools.SearchMemoryTool(store: store, persona: persona),
-            BuiltinTools.AddMemoryTool(store: store, persona: persona),
+            BuiltinTools.SearchMemoryTool(store: store, persona: session.persona),
+            BuiltinTools.AddMemoryTool(store: store, persona: session.persona),
+            TaskPlanTools.TodoWriteTool(
+                store: store,
+                threadID: session.threadID,
+                persona: session.persona,
+                runID: session.runID
+            ),
+            TaskPlanTools.TodoReadTool(
+                store: store,
+                threadID: session.threadID,
+                persona: session.persona
+            ),
         ]
         #if os(macOS)
         tools.append(BuiltinTools.RunLocalAgentTool())
@@ -248,8 +281,9 @@ public actor AgentLoop {
         threadID: String? = nil
     ) async throws -> AgentResult {
         let session = prepareSession(message: message, persona: persona, threadID: threadID)
+        defer { endRun(session) }
 
-        switch makeRunMode(persona: session.persona, history: session.history) {
+        switch makeRunMode(session: session) {
         case .fallback(let reply):
             persist(session, reply: reply, traces: [])
             return AgentResult(
@@ -312,11 +346,17 @@ public actor AgentLoop {
         yield: @escaping @Sendable (AgentStreamEvent) -> Void
     ) async throws {
         let session = prepareSession(message: message, persona: persona, threadID: threadID)
+        defer { endRun(session) }
+        if !session.plan.items.isEmpty {
+            yield(.planUpdated(session.plan))
+        }
 
-        switch makeRunMode(persona: session.persona, history: session.history) {
+        switch makeRunMode(session: session) {
         case .fallback(let reply):
             yield(.fallback(reply))
             persist(session, reply: reply, traces: [])
+            endRun(session)
+            if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
             yield(.finished(AgentResult(
                 success: true,
                 persona: session.persona,
@@ -334,6 +374,8 @@ public actor AgentLoop {
                 yield: yield
             )
             persist(session, reply: reply, traces: traces)
+            endRun(session)
+            if let plan = currentPlan(session) { yield(.planUpdated(plan)) }
             yield(.finished(AgentResult(
                 success: true,
                 persona: session.persona,
@@ -359,6 +401,7 @@ public actor AgentLoop {
         var messages: [ChatMessage] = [.text(.system, session.systemPrompt)]
         messages.append(contentsOf: session.history.suffix(contextMessageLimit))
         var traces: [ToolTrace] = []
+        var lastPlan = session.plan
 
         for _ in 0..<max(config.agent.maxRounds, 1) {
             let text: String
@@ -395,6 +438,12 @@ public actor AgentLoop {
                 traces.append(trace)
                 yield?(.toolCalled(trace))
                 messages.append(toolMessage)
+
+                // todowrite 等工具可能改写计划,实时推给 UI
+                if let updated = currentPlan(session), updated != lastPlan {
+                    lastPlan = updated
+                    yield?(.planUpdated(updated))
+                }
             }
         }
 
@@ -452,6 +501,20 @@ public actor AgentLoop {
             toolName: call.name
         )
         return (trace, message)
+    }
+
+    // MARK: - 任务计划生命周期
+
+    /// 读取当前计划(不存在或读取失败时返回 nil)。
+    private func currentPlan(_ session: Session) -> TaskPlan? {
+        try? store.loadTaskPlan(threadID: session.threadID, persona: session.persona)
+    }
+
+    /// 结束本轮:仅当计划仍绑定本轮的 runID 时才清除 running。
+    private func endRun(_ session: Session) {
+        guard var plan = currentPlan(session), plan.runID == session.runID else { return }
+        plan.running = false
+        try? store.saveTaskPlan(plan, threadID: session.threadID, persona: session.persona)
     }
 
     // MARK: - 落盘

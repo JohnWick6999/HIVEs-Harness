@@ -87,6 +87,13 @@ public final class SQLiteStore: @unchecked Sendable {
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS task_plans (
+                thread_id TEXT NOT NULL,
+                persona TEXT NOT NULL,
+                plan_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (thread_id, persona)
+            );
             """)
     }
 
@@ -429,6 +436,48 @@ public final class SQLiteStore: @unchecked Sendable {
         let raw = textValue(row["value"] ?? "")
         guard let data = raw.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(AnyCodable.self, from: data)
+    }
+
+    // MARK: - 任务计划
+
+    public func saveTaskPlan(_ plan: TaskPlan, threadID: String, persona: String) throws {
+        let json = try encodeJSON(plan)
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            """
+            INSERT INTO task_plans(thread_id, persona, plan_json, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(thread_id, persona) DO UPDATE SET
+                plan_json=excluded.plan_json,
+                updated_at=excluded.updated_at
+            """,
+            [.text(threadID), .text(persona), .text(json), .text(now())]
+        )
+    }
+
+    /// 读取任务计划;不存在时返回空计划(不创建行)。
+    public func loadTaskPlan(threadID: String, persona: String) throws -> TaskPlan {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(
+            "SELECT plan_json FROM task_plans WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        guard let row = rows.first,
+              let data = textValue(row["plan_json"] ?? "").data(using: .utf8),
+              let plan = try? JSONDecoder().decode(TaskPlan.self, from: data)
+        else { return .empty }
+        return plan
+    }
+
+    public func deleteTaskPlan(threadID: String, persona: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            "DELETE FROM task_plans WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
     }
 
     // MARK: - 状态
