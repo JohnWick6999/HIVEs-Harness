@@ -16,11 +16,14 @@ final class AppState {
     var apiKey: String
     var errorMessage: String?
     var lastToolTrace: [ToolTrace] = []
+    var lastFileChanges: [FileChange] = []
     /// 当前会话的任务计划(todowrite 实时更新)
     var taskPlan: TaskPlan = .empty
     /// 当前会话的上下文用量/压缩状态
     var contextState: SessionContextState = .empty
     var showPluginStudio = false
+    var backgroundTasks: [AgentBackgroundTask] = []
+    private var backgroundJobs: [String: Task<Void, Never>] = [:]
     var usageStats: UsageStats = .zero
     var lastRunUsage: LLMUsage = .zero
     /// 等待用户处理的审批请求
@@ -282,6 +285,7 @@ final class AppState {
         taskPlan = .empty
         contextState = .empty
         lastToolTrace = []
+        lastFileChanges = []
         pendingDraft = nil
     }
 
@@ -289,6 +293,7 @@ final class AppState {
         guard sessions.contains(where: { $0.id == id }) else { return }
         currentThreadID = id
         lastToolTrace = []
+        lastFileChanges = []
         loadHistory()
     }
 
@@ -358,6 +363,7 @@ final class AppState {
         lastRunUsage = .zero
         saveUsageStats()
         lastToolTrace = []
+        lastFileChanges = []
     }
 
     func deleteCurrentSession() {
@@ -496,9 +502,11 @@ final class AppState {
         messages.append(.text(.user, trimmed))
         isBusy = true
         errorMessage = nil
+        lastFileChanges = []
         defer { isBusy = false }
 
         let mcpTools = await loadMCPTools()
+        let subagentTools = makeSubagentTools()
         let loop = AgentLoop(
             store: store,
             config: config,
@@ -514,7 +522,7 @@ final class AppState {
                 return await self.requestClarification(request)
             },
             clarificationMode: config.agent.clarificationMode,
-            extraTools: mcpTools + skillTools + [CreatePluginTool(service: pluginStudio)],
+            extraTools: mcpTools + skillTools + subagentTools + [CreatePluginTool(service: pluginStudio)],
             skillCatalog: skillCatalogText
         )
         do {
@@ -535,6 +543,7 @@ final class AppState {
                     modelCalls: result.modelCalls,
                     toolCalls: result.trace.count
                 )
+                lastFileChanges = result.trace.flatMap(\.changes)
                 if result.trace.contains(where: { $0.tool == "create_plugin" }) {
                     reloadPluginProjects()
                     showPluginStudio = true
@@ -573,6 +582,7 @@ final class AppState {
         isBusy = true
         errorMessage = nil
         lastToolTrace = []
+        lastFileChanges = []
         typingPending = ""
         typingTask?.cancel()
         typingTask = nil
@@ -598,6 +608,7 @@ final class AppState {
         messages.append(ChatMessage(role: .assistant, content: .text(""), id: placeholderID))
 
         let mcpTools = await loadMCPTools()
+        let subagentTools = makeSubagentTools()
         let loop = AgentLoop(
             store: store,
             config: config,
@@ -613,7 +624,7 @@ final class AppState {
                 return await self.requestClarification(request)
             },
             clarificationMode: config.agent.clarificationMode,
-            extraTools: mcpTools + skillTools + [CreatePluginTool(service: pluginStudio)],
+            extraTools: mcpTools + skillTools + subagentTools + [CreatePluginTool(service: pluginStudio)],
             skillCatalog: skillCatalogText
         )
         do {
@@ -657,6 +668,7 @@ final class AppState {
                             modelCalls: result.modelCalls,
                             toolCalls: result.trace.count
                         )
+                        lastFileChanges = result.trace.flatMap(\.changes)
                         if result.trace.contains(where: { $0.tool == "create_plugin" }) {
                             reloadPluginProjects()
                             showPluginStudio = true
@@ -890,6 +902,105 @@ final class AppState {
                 self.skillProposals = self.skillEvolver.proposals()
                 self.errorMessage = "已生成技能提案: \(proposal.name)(在设置 → 技能中批准)"
             }
+        }
+    }
+
+    // MARK: - 子代理 / 后台任务
+
+    private func makeSubagentTools() -> [any Tool] {
+        [
+            RunSubagentTool { [weak self] request in
+                guard let self else {
+                    return SubagentResult(title: request.title, reply: "主进程已退出", success: false)
+                }
+                return await self.performSubagent(request)
+            },
+            RunSubagentClusterTool { [weak self] request in
+                guard let self else {
+                    return SubagentResult(title: request.title, reply: "主进程已退出", success: false)
+                }
+                return await self.performSubagent(request)
+            },
+            SpawnAgentBackgroundTaskTool { [weak self] title, prompt in
+                guard let self else { return "" }
+                return await self.spawnAgentBackgroundTask(title: title, prompt: prompt)
+            },
+        ]
+    }
+
+    /// 子代理使用独立线程和只读工作模式,不会递归创建子代理。
+    private func performSubagent(_ request: SubagentRequest) async -> SubagentResult {
+        let started = Date()
+        var subConfig = config
+        subConfig.agent.workMode = .chat
+        subConfig.agent.maxRounds = min(4, max(1, config.agent.maxRounds))
+        subConfig.agent.autoEvolveSkills = false
+        subConfig.agent.clarificationMode = .off
+
+        let loop = AgentLoop(
+            store: store,
+            config: subConfig,
+            keychain: keychain,
+            personas: personas,
+            workspace: workspace,
+            approvalHandler: nil,
+            extraTools: [],
+            skillCatalog: ""
+        )
+        let rolePrefix = request.role.isEmpty ? "" : "角色: \(request.role)\n\n"
+        do {
+            let result = try await loop.invoke(
+                message: rolePrefix + request.prompt,
+                persona: selectedPersona,
+                threadID: "subagent_" + UUID().uuidString.lowercased()
+            )
+            return SubagentResult(
+                title: request.title,
+                reply: result.reply,
+                success: result.success,
+                durationMs: Int(Date().timeIntervalSince(started) * 1000)
+            )
+        } catch {
+            return SubagentResult(
+                title: request.title,
+                reply: "子代理失败: \(error.localizedDescription)",
+                success: false,
+                durationMs: Int(Date().timeIntervalSince(started) * 1000)
+            )
+        }
+    }
+
+    @discardableResult
+    func spawnAgentBackgroundTask(title: String, prompt: String) -> String {
+        let task = AgentBackgroundTask(title: title, prompt: prompt)
+        backgroundTasks.insert(task, at: 0)
+        backgroundJobs[task.id] = Task { [weak self] in
+            guard let self else { return }
+            let result = await self.performSubagent(
+                SubagentRequest(title: title, prompt: prompt)
+            )
+            guard let index = self.backgroundTasks.firstIndex(where: { $0.id == task.id }) else {
+                return
+            }
+            if Task.isCancelled {
+                self.backgroundTasks[index].status = .cancelled
+                self.backgroundTasks[index].finishedAt = Date()
+                return
+            }
+            self.backgroundTasks[index].status = result.success ? .completed : .failed
+            self.backgroundTasks[index].result = result.reply
+            self.backgroundTasks[index].error = result.success ? nil : result.reply
+            self.backgroundTasks[index].finishedAt = Date()
+        }
+        return task.id
+    }
+
+    func cancelAgentBackgroundTask(_ id: String) {
+        backgroundJobs[id]?.cancel()
+        backgroundJobs[id] = nil
+        if let index = backgroundTasks.firstIndex(where: { $0.id == id }) {
+            backgroundTasks[index].status = .cancelled
+            backgroundTasks[index].finishedAt = Date()
         }
     }
 
@@ -1167,6 +1278,7 @@ final class AppState {
         let persona = request.persona ?? config.gateway.defaultPersona
         let thread = request.threadID ?? ("gateway_" + UUID().uuidString.lowercased())
         let mcpTools = await loadMCPTools()
+        let subagentTools = makeSubagentTools()
         let loop = AgentLoop(
             store: store,
             config: config,
@@ -1174,7 +1286,7 @@ final class AppState {
             personas: personas,
             workspace: workspace,
             approvalHandler: { _ in .reject },
-            extraTools: mcpTools + skillTools + [CreatePluginTool(service: pluginStudio)],
+            extraTools: mcpTools + skillTools + subagentTools + [CreatePluginTool(service: pluginStudio)],
             skillCatalog: skillCatalogText
         )
         do {

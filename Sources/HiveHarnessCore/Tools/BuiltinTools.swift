@@ -143,15 +143,23 @@ public enum BuiltinTools {
             }
             let content = arguments["content"]?.value as? String ?? ""
             let target = try await policy.resolveWrite(raw, safePath: safePath)
+            let oldText = (try? String(contentsOf: target, encoding: .utf8))
             try FileManager.default.createDirectory(
                 at: target.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
             try content.write(to: target, atomically: true, encoding: .utf8)
+            let change = FileChange(
+                path: target.path,
+                oldText: oldText,
+                newText: content,
+                language: target.pathExtension
+            )
             // 产出文件随结果返回,UI 渲染为可点击卡片
             return ToolResult(
                 text: "已写入 \(target.path) (\(content.count) chars)",
-                files: [target]
+                files: [target],
+                changes: change.hasChanges ? [change] : []
             )
         }
     }

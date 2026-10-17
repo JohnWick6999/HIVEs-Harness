@@ -8,6 +8,7 @@ struct ChatView: View {
     @State private var showMarketplace = false
     @State private var showWorkbench = false
     @State private var showRunHistory = false
+    @State private var showBackgroundTasks = false
     @State private var planExpanded = true
     @State private var showContext = false
     @AppStorage("sidebarExpanded") private var sidebarExpanded = true
@@ -24,6 +25,7 @@ struct ChatView: View {
                     onMarketplace: { showMarketplace = true },
                     onWorkbench: { showWorkbench = true },
                     onRuns: { showRunHistory = true },
+                    onBackground: { showBackgroundTasks = true },
                     onSettings: { showSettings = true }
                 )
                 VStack(spacing: 0) {
@@ -69,6 +71,10 @@ struct ChatView: View {
         }
         .sheet(isPresented: $state.showPluginStudio) {
             PluginStudioView()
+                .environment(state)
+        }
+        .sheet(isPresented: $showBackgroundTasks) {
+            AgentBackgroundTasksView()
                 .environment(state)
         }
         .tint(HiveTheme.amberDeep)

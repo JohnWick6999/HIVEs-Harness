@@ -33,10 +33,17 @@ public struct ToolResult: Sendable, Equatable {
     public let text: String
     /// 产出文件(绝对路径)
     public let files: [URL]
+    /// 文本文件写入前后的快照(用于聊天内 diff 提示)
+    public let changes: [FileChange]
 
-    public init(text: String, files: [URL] = []) {
+    public init(
+        text: String,
+        files: [URL] = [],
+        changes: [FileChange] = []
+    ) {
         self.text = text
         self.files = files
+        self.changes = changes
     }
 }
 

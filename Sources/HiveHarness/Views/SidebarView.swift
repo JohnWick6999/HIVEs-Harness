@@ -10,6 +10,7 @@ struct SidebarView: View {
     let onMarketplace: () -> Void
     let onWorkbench: () -> Void
     let onRuns: () -> Void
+    let onBackground: () -> Void
     let onSettings: () -> Void
 
     private var width: CGFloat { expanded ? 240 : 68 }
@@ -199,6 +200,12 @@ struct SidebarView: View {
             SidebarAction(icon: "storefront", title: "插件市场", action: onMarketplace)
             SidebarAction(icon: "wrench.and.screwdriver", title: "工作台", action: onWorkbench)
             SidebarAction(icon: "clock.arrow.circlepath", title: "运行日志", action: onRuns)
+            SidebarAction(
+                icon: "rectangle.stack.badge.play",
+                title: "后台任务",
+                badge: state.backgroundTasks.filter { $0.status == .running }.count,
+                action: onBackground
+            )
         }
         .padding(.bottom, 8)
     }
@@ -226,6 +233,7 @@ struct SidebarView: View {
             collapsedButton("storefront", help: "插件市场", action: onMarketplace)
             collapsedButton("wrench.and.screwdriver", help: "工作台", action: onWorkbench)
             collapsedButton("clock.arrow.circlepath", help: "运行日志", action: onRuns)
+            collapsedButton("rectangle.stack.badge.play", help: "后台任务", action: onBackground)
         }
         .padding(.top, 14)
         .frame(maxWidth: .infinity)
@@ -306,6 +314,7 @@ struct SidebarView: View {
 private struct SidebarAction: View {
     let icon: String
     let title: String
+    var badge: Int = 0
     let action: () -> Void
 
     var body: some View {
@@ -318,6 +327,14 @@ private struct SidebarAction: View {
                 Text(title)
                     .font(.caption)
                 Spacer()
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(HiveTheme.amber.opacity(0.16), in: Capsule())
+                        .foregroundStyle(HiveTheme.amberDeep)
+                }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 8)
