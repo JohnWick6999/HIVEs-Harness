@@ -4,11 +4,13 @@ import Foundation
 public actor MarketplaceService {
     private let github: GitHubMarketplaceClient
     private let modelScope: ModelScopeMarketplaceClient
+    private let session: URLSession
     private let builtin: [MarketplaceItem]
     private var cache: [String: (date: Date, result: MarketplaceResult)] = [:]
     private var expansions: [String: [MarketplaceItem]] = [:]
 
     public init(githubToken: String? = nil, session: URLSession = .shared) {
+        self.session = session
         self.github = GitHubMarketplaceClient(session: session, token: githubToken)
         self.modelScope = ModelScopeMarketplaceClient(session: session)
         self.builtin = Self.loadBuiltin()
@@ -194,6 +196,37 @@ public actor MarketplaceService {
             return item
         case .modelScopeModel:
             throw MarketplaceError.unsupportedSource("ModelScope 模型页暂不支持作为技能安装")
+        case .hivePlugin(let url):
+            guard let requestURL = URL(string: url) else {
+                throw MarketplaceError.invalidLink(raw)
+            }
+            let (data, response) = try await session.data(from: requestURL)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode)
+            else {
+                throw MarketplaceError.http(
+                    (response as? HTTPURLResponse)?.statusCode ?? 0,
+                    "无法下载插件包"
+                )
+            }
+            guard let bundle = try? JSONDecoder().decode(PluginBundle.self, from: data),
+                  !bundle.manifest.skills.isEmpty || !bundle.manifest.mcpServers.isEmpty
+            else {
+                throw MarketplaceError.invalidPackage("不是有效的 .hiveplugin.json 插件包")
+            }
+            return MarketplaceItem(
+                id: "bundle:\(bundle.manifest.id)",
+                name: bundle.manifest.name,
+                summary: bundle.manifest.description,
+                author: bundle.manifest.author,
+                version: bundle.manifest.version,
+                source: .web,
+                kind: .plugin,
+                tags: bundle.manifest.tags,
+                license: bundle.manifest.license,
+                installURL: url,
+                pluginBundle: bundle
+            )
         }
     }
 

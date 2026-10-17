@@ -93,6 +93,9 @@ public struct MarketplaceInstaller: Sendable {
                 isBuiltin: true
             )
         }
+        if let bundle = item.pluginBundle {
+            return try planBundle(item: item, bundle: bundle)
+        }
         if item.kind == .mcp {
             throw MarketplaceError.invalidPackage("MCP 服务器安装将在下一版支持;请先通过设置 → MCP 手动添加。")
         }
@@ -213,6 +216,66 @@ public struct MarketplaceInstaller: Sendable {
             warnings: warnings,
             overwriting: overwriting,
             ref: ref,
+            mcpServers: mcpServers
+        )
+    }
+
+    /// 直链 `.hiveplugin.json` 的预检。
+    private func planBundle(
+        item: MarketplaceItem,
+        bundle: PluginBundle
+    ) throws -> MarketplaceInstallPlan {
+        var warnings: [String] = ["来自直链插件包;只安装 SKILL.md 与 MCP 配置,不执行脚本。"]
+        var files: [MarketplaceInstallFile] = []
+        var usedIDs = Set<String>()
+        let skillPaths = bundle.manifest.skills.isEmpty
+            ? bundle.files.keys.filter { $0.hasSuffix("SKILL.md") }.sorted()
+            : bundle.manifest.skills
+
+        for path in skillPaths {
+            guard let content = bundle.files[path] else {
+                warnings.append("插件包缺少: \(path)")
+                continue
+            }
+            guard content.utf8.count <= 512_000 else {
+                warnings.append("跳过超大文件: \(path)")
+                continue
+            }
+            let meta = SkillStore.parseFrontmatter(content).meta
+            let declared = (meta["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let parent = URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent
+            let base = declared.isEmpty
+                ? (path == "SKILL.md" ? bundle.manifest.name : parent)
+                : declared
+            let id = Self.uniqueID(Self.sanitize(base), used: &usedIDs)
+            files.append(
+                MarketplaceInstallFile(
+                    skillID: id,
+                    path: path,
+                    content: content,
+                    sha256: Self.sha256(content)
+                )
+            )
+        }
+
+        var mcpServers = bundle.manifest.mcpServers
+        for index in mcpServers.indices {
+            mcpServers[index].enabled = false
+        }
+        guard !files.isEmpty || !mcpServers.isEmpty else {
+            throw MarketplaceError.noInstallableSkill
+        }
+        if !mcpServers.isEmpty {
+            warnings.append("随包安装 \(mcpServers.count) 个 MCP 服务器(默认停用)。")
+        }
+        let existing = Set(skillStore.all().map(\.id))
+        let overwriting = files.map(\.skillID).filter { existing.contains($0) }
+        return MarketplaceInstallPlan(
+            item: item,
+            files: files,
+            warnings: warnings,
+            overwriting: overwriting,
+            ref: "bundle",
             mcpServers: mcpServers
         )
     }

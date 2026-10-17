@@ -249,10 +249,11 @@ public struct PluginAuthoringService: Sendable {
 
         if !project.manifest.mcpServers.isEmpty {
             var existing = MCPConfigLoader.load(directory: mcpDirectory)
-            let existingIDs = Set(existing.map(\.id))
+            var existingIDs = Set(existing.map(\.id))
             for var config in project.manifest.mcpServers where !existingIDs.contains(config.id) {
                 config.enabled = false
                 existing.append(config)
+                existingIDs.insert(config.id)
             }
             try MCPConfigLoader.save(existing, directory: mcpDirectory)
         }

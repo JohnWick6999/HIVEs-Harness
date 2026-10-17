@@ -201,6 +201,7 @@ plugin-studio/<id>/
 | MCP `mcp.json` / `.mcp.json` / `server.json` | ✅ |
 | Claude/VS Code `mcpServers` 对象 | ✅ 自动转换 |
 | GitHub repo / `tree` / `blob` / `raw` 链接 | ✅ 自动限定子目录 |
+| 直链 `.hiveplugin.json` | ✅ 下载、预览、安装技能 + MCP |
 | ModelScope skills 链接 | ✅ |
 | GitLab / Gitee / npm 包 / DSH Cordis 代码插件 | ⏳ 暂不执行代码插件 |
 
@@ -241,7 +242,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 172 tests in 34 suites passed
+# 173 tests in 34 suites passed
 ```
 
 ## 🔄 与旧版的关系

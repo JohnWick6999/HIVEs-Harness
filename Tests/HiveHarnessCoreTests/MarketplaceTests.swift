@@ -122,6 +122,57 @@ struct MarketplaceTests {
         )
     }
 
+    @Test("直链 .hiveplugin 解析、导入与安装")
+    func hivePluginBundle() async throws {
+        #expect(
+            MarketplaceLinkParser.parse("https://example.com/demo.hiveplugin.json")
+                == .hivePlugin(url: "https://example.com/demo.hiveplugin.json")
+        )
+
+        let manifest = PluginManifest(
+            id: "bundle-demo",
+            name: "直链插件",
+            skills: ["skills/demo/SKILL.md"]
+        )
+        let content = """
+        ---
+        id: bundle-demo-skill
+        name: 直链技能
+        description: 从插件包安装
+        ---
+
+        1. 读取输入
+        2. 输出结果
+        """
+        let bundle = PluginBundle(
+            manifest: manifest,
+            files: ["skills/demo/SKILL.md": content, "plugin.json": "{}"]
+        )
+        let data = try JSONEncoder().encode(bundle)
+        MarketplaceMockURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, data)
+        }
+
+        let service = MarketplaceService(session: marketplaceSession())
+        let item = try await service.importLink("https://example.com/demo.hiveplugin.json")
+        #expect(item.source == .web)
+        #expect(item.pluginBundle != nil)
+
+        let store = try marketplaceSkillStore()
+        let installer = MarketplaceInstaller(session: marketplaceSession(), skillStore: store)
+        let plan = try await installer.plan(for: item)
+        #expect(plan.files.count == 1)
+        let installed = try installer.install(plan)
+        #expect(installed.first?.id == "bundle-demo-skill")
+        #expect(store.load(id: "bundle-demo-skill") != nil)
+    }
+
     @Test("ModelScope JSON 多外壳解析")
     func modelScopeParsing() {
         let data = Data(

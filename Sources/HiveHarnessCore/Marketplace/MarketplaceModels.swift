@@ -4,6 +4,7 @@ public enum MarketplaceSource: String, Codable, Sendable, CaseIterable, Identifi
     case builtin
     case github
     case modelScope
+    case web
 
     public var id: String { rawValue }
 
@@ -12,6 +13,7 @@ public enum MarketplaceSource: String, Codable, Sendable, CaseIterable, Identifi
         case .builtin: return "内置"
         case .github: return "GitHub"
         case .modelScope: return "魔搭"
+        case .web: return "直链"
         }
     }
 }
@@ -51,6 +53,8 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
     public var installCommand: String?
     /// 插件在仓库内的子目录(如 plugins/pdf)
     public var installPath: String?
+    /// 直链 `.hiveplugin.json` 的内嵌内容
+    public var pluginBundle: PluginBundle?
 
     public init(
         id: String,
@@ -68,7 +72,8 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
         installURL: String? = nil,
         iconURL: String? = nil,
         installCommand: String? = nil,
-        installPath: String? = nil
+        installPath: String? = nil,
+        pluginBundle: PluginBundle? = nil
     ) {
         self.id = id
         self.name = name
@@ -86,11 +91,13 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
         self.iconURL = iconURL
         self.installCommand = installCommand
         self.installPath = installPath
+        self.pluginBundle = pluginBundle
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, summary, author, version, source, kind, tags
         case stars, downloads, license, homepage, installURL, iconURL, installCommand, installPath
+        case pluginBundle
     }
 
     /// 远程/内置清单字段不齐时使用默认值,避免整份目录解码失败。
@@ -112,6 +119,7 @@ public struct MarketplaceItem: Codable, Sendable, Equatable, Identifiable {
         iconURL = try container.decodeIfPresent(String.self, forKey: .iconURL)
         installCommand = try container.decodeIfPresent(String.self, forKey: .installCommand)
         installPath = try container.decodeIfPresent(String.self, forKey: .installPath)
+        pluginBundle = try container.decodeIfPresent(PluginBundle.self, forKey: .pluginBundle)
     }
 }
 
@@ -165,6 +173,10 @@ public enum MarketplaceLinkParser {
               let host = components.host?.lowercased()
         else { return nil }
         let parts = components.path.split(separator: "/").map(String.init)
+        let lowerPath = components.path.lowercased()
+        if lowerPath.hasSuffix(".hiveplugin") || lowerPath.hasSuffix(".hiveplugin.json") {
+            return .hivePlugin(url: text)
+        }
 
         if host == "github.com" || host == "www.github.com" {
             guard parts.count >= 2 else { return nil }
@@ -252,6 +264,7 @@ public enum MarketplaceLink: Sendable, Equatable {
     case github(owner: String, repo: String, ref: String?)
     case modelScopeSkill(owner: String, name: String)
     case modelScopeModel(owner: String, name: String)
+    case hivePlugin(url: String)
 
     public var rawURL: String {
         switch self {
@@ -261,6 +274,8 @@ public enum MarketplaceLink: Sendable, Equatable {
             return "https://modelscope.cn/skills/\(owner)/\(name)"
         case .modelScopeModel(let owner, let name):
             return "https://modelscope.cn/models/\(owner)/\(name)"
+        case .hivePlugin(let url):
+            return url
         }
     }
 }
