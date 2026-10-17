@@ -246,6 +246,20 @@ public enum LLMError: Error, Sendable, Equatable {
     case transport(String)
 }
 
+extension LLMError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "模型返回了无法解析的响应。请检查 Base URL 是否为 OpenAI 兼容的 /v1 地址、模型名是否正确,以及 API Key 是否填到了 Keychain 字段。"
+        case .httpStatus(let code, let body):
+            let detail = body.trimmingCharacters(in: .whitespacesAndNewlines).prefix(300)
+            return "模型请求失败 (HTTP \(code)): \(detail)"
+        case .transport(let message):
+            return "模型网络请求失败: \(message)"
+        }
+    }
+}
+
 /// 大模型客户端统一接口(对应原版 `LLMClient` 抽象)。
 /// 实现必须为 Sendable,可跨 actor 传递。
 public protocol LLMClient: Sendable {
