@@ -8,8 +8,8 @@ public struct HTTPGetTool: Tool {
         name: "http_get",
         description: """
         Fetch a public HTTP(S) URL for live data such as weather, APIs, or documentation. \
-        Returns the response body as text (truncated). Use this instead of guessing or trying \
-        local agent CLIs for network access. Private/loopback hosts are rejected.
+        Supports GET/POST/PUT/PATCH/DELETE with optional headers and body. Returns text \
+        (truncated). Private/loopback hosts are rejected.
         """,
         parameters: [
             "type": AnyCodable("object"),
@@ -18,6 +18,12 @@ public struct HTTPGetTool: Tool {
                     "type": "string",
                     "description": "完整 http/https URL,例如 https://wttr.in/Yingkou?format=%l:+%c+%t+%w+%h",
                 ],
+                "method": [
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+                ],
+                "headers": ["type": "object"],
+                "body": ["type": "string"],
             ]),
             "required": AnyCodable(["url"]),
         ]
@@ -44,11 +50,28 @@ public struct HTTPGetTool: Tool {
             throw ToolError.permissionDenied("http_get 不允许访问本机或私网地址: \(host)")
         }
 
+        let method = (arguments["method"]?.value as? String ?? "GET").uppercased()
+        guard ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(method) else {
+            throw ToolError.invalidArguments("不支持的 HTTP method: \(method)")
+        }
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
         request.timeoutInterval = 20
         request.setValue("HiveHarness/0.1 (macOS Agent)", forHTTPHeaderField: "User-Agent")
         request.setValue("text/plain, text/html;q=0.9, application/json;q=0.9, */*;q=0.5", forHTTPHeaderField: "Accept")
+        if let headers = arguments["headers"]?.value as? [String: Any] {
+            for (key, value) in headers.prefix(20) {
+                if let text = value as? String {
+                    request.setValue(text, forHTTPHeaderField: key)
+                }
+            }
+        }
+        if let body = arguments["body"]?.value as? String, !body.isEmpty {
+            request.httpBody = Data(body.utf8)
+            if request.value(forHTTPHeaderField: "Content-Type") == nil {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            }
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -65,7 +88,7 @@ public struct HTTPGetTool: Tool {
             return ToolResult(text: "HTTP \(http.statusCode) 返回空响应")
         }
         let capped = String(text.prefix(16_000))
-        return ToolResult(text: "HTTP \(http.statusCode) \(url.absoluteString)\n\n\(capped)")
+        return ToolResult(text: "HTTP \(http.statusCode) \(method) \(url.absoluteString)\n\n\(capped)")
     }
 
     private static func isPrivateHost(_ host: String) -> Bool {

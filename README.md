@@ -191,7 +191,7 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 - 等级越高,彗尾越长、颜色越强:青 → 琥珀 → 橙 → 粉紫
 - **真实生效**:DeepSeek 会发送 `thinking {type}` 与 `reasoning_effort`;工具调用轮次会回传 `reasoning_content`,避免带 tools 时 400
 - DeepSeek 的 `medium` 由服务端映射为 high;`max` 发送 `max`;OpenAI 兼容模型的 `max` 发送 high
-- 档位越高,选择时动效越强:光环数量、粒子数量、旋转色环逐级增加
+- 档位越高,左侧喷溅与彗尾越强;高级别不再绘制环状光晕
 
 ## 🎛️ 外观与侧栏
 
@@ -213,6 +213,27 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 - **删除**:二次确认,同时清理聊天记录、任务计划、上下文和运行记录
 - 归档/删除当前会话时,自动切换到下一个会话;没有则新建
 - **新建但未发送消息的空白会话只存在于内存,不写入历史**;发送第一条消息时才落库
+
+## 🧰 原生工具集
+
+- **文件检索**:`glob` 按模式找文件,`grep` 按正则搜内容
+- **精确编辑**:`edit_file` 做 old/new 精确替换,避免整文件重写
+- **Shell**:`shell` 执行测试、构建、git、包管理器;仅完全控制模式 + 审批
+- **联网**:`http_get` 支持 GET/POST/PUT/PATCH/DELETE、headers、body;`web_search` 搜索公开网页
+- **文档**:`read_pdf` 提取 PDF 文本,按页返回
+- **代码/工作区**:`read_file`、`write_file`、`list_dir`
+- **记忆/计划**:`search_memory`、`add_memory`、`todowrite`、`todoread`
+- **技能/插件**:`list_skills`、`run_skill`、`create_plugin`
+- **子代理**:`run_subagent`、`run_subagent_cluster`、`spawn_background_task`
+- **MCP**:启用的服务器工具动态注册为 `mcp__<server>__<tool>`
+
+### 模式边界
+
+| 模式 | 可用范围 |
+|---|---|
+| 对话 | 只读文件、glob/grep、PDF、记忆、计划、技能、提问 |
+| 安全 | 增加工作区内 `write_file`/`edit_file`、`create_plugin` |
+| 完全控制 | 增加 `http_get`/`web_search`、`shell`、`run_local_agent`、MCP;外部执行/写入需审批 |
 
 ## 🧰 工具调度
 
@@ -359,7 +380,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 214 tests in 45 suites passed
+# 219 tests in 46 suites passed
 ```
 
 ## 🔄 与旧版的关系

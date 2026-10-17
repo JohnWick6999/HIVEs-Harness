@@ -339,7 +339,8 @@ public actor AgentLoop {
         \(subagentSection)
         \(webSection)
 
-        文件工具(list_dir/read_file)可以读取任意本地路径,包括工作区外的绝对路径;不能因为路径在工作区外就声称无法读取。
+        文件工具(list_dir/read_file/glob/grep/read_pdf)可以读取任意本地路径,包括工作区外的绝对路径;不能因为路径在工作区外就声称无法读取。
+        查找文件用 glob,搜索内容用 grep,精确修改用 edit_file;不要用 write_file 重写整份文件。
         写入范围由工作模式决定:安全模式只能写工作区,完全控制模式写工作区外会先请求用户审批。
         若用户要求写到桌面或其他目录,在安全模式下将文件写入工作区并说明实际完整路径;在完全控制模式下可以直接写入。
 
@@ -458,6 +459,11 @@ public actor AgentLoop {
             BuiltinTools.ListDirTool(workspace: workspace, policy: policy),
             BuiltinTools.ReadFileTool(workspace: workspace, policy: policy),
             BuiltinTools.WriteFileTool(workspace: workspace, policy: policy),
+            GlobTool(workspace: workspace, policy: policy),
+            GrepTool(workspace: workspace, policy: policy),
+            EditFileTool(workspace: workspace, policy: policy),
+            ReadPDFTool(workspace: workspace, policy: policy),
+            WebSearchTool(),
             BuiltinTools.SearchMemoryTool(store: store, persona: session.persona),
             BuiltinTools.AddMemoryTool(
                 store: store,
@@ -487,6 +493,7 @@ public actor AgentLoop {
         }
         #if os(macOS)
         tools.append(BuiltinTools.RunLocalAgentTool())
+        tools.append(ShellTool(workspace: workspace))
         #endif
         tools.append(contentsOf: extraTools)
         return tools
