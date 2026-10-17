@@ -14,7 +14,7 @@
 | 🙋 主动澄清 | 多问题向导(可回退/保留选择/动画切换);推荐项/自由补充;三档偏好 | ✅ |
 | 🧠 多模型 | 多提供商、模型组回退、Keychain API Key、模型管理 UI | ✅ |
 | 🎭 通用人格 | 7 个通用内置人格;可覆盖、恢复默认;自定义人格可增删 | ✅ |
-| 🛠️ 工具与审批 | 文件、记忆、Shell、Git、本地 Agent CLI;三档工作模式 + Touch ID | ✅ |
+| 🛠️ 工具与审批 | 文件、记忆、Shell、Git、本地 Agent CLI、HTTP 联网;三档模式 + Touch ID | ✅ |
 | 📋 任务计划 | todo 工具、计划面板、超预算摘要压缩 | ✅ |
 | 🧾 运行日志 | 模型/工具/审批/压缩时间线,事件回放、问答回看与 JSON 导出 | ✅ |
 | 📊 AI 用量 | 底部状态条:token、缓存命中、模型轮数、运行/工具次数;按会话持久化 | ✅ |
@@ -136,6 +136,18 @@ open build/HiveHarness.app
 - **`LLMError error 0` / 无法解析响应**:通常是 Base URL、模型名、API Key 填反或模型不存在。设置 → 模型会拒绝把 `sk-...` 填进“模型名”;Key 只放 API Key 字段(Keychain)。
 - **HTTP 401/404**:检查 Key 与模型 id;DeepSeek 官方可用模型以 `/models` 返回为准。
 - **MCP 不出现**:`servers.json` 中 `enabled` 必须为 true,并在设置 → MCP 重新载入。
+
+## 🌐 联网与天气
+
+Agent 内置 `http_get`(受审批保护的 HTTP GET):
+
+- 可查询天气、公共 API、网页与文档
+- 示例:`https://wttr.in/Yingkou?format=%l:+%c+%t+%w+%h`
+- 仅完全控制模式可用,执行前会请求审批
+- 只允许公开 `http/https`;本机/私网地址会被拒绝
+- 响应最多 16k 字符,避免撑爆上下文
+
+所以“查询营口天气”会走真实联网请求,而不是先尝试本机 CLI 或声称无法联网。
 
 ## 🛠️ 首次使用
 

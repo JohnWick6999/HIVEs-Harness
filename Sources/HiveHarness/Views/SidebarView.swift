@@ -73,13 +73,8 @@ struct SidebarView: View {
                 Button {
                     withAnimation { expanded = true }
                 } label: {
-                    VStack(spacing: 7) {
-                        HiveMark(size: 30)
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
+                    HiveMark(size: 30)
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
                 .help("展开侧边栏")
