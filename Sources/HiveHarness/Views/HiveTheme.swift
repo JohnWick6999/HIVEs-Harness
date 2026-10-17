@@ -31,25 +31,25 @@ struct HiveBackground: View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
             RadialGradient(
-                colors: [HiveTheme.honey.opacity(0.10), .clear],
+                colors: [HiveTheme.honey.opacity(0.13), .clear],
                 center: .topLeading,
                 startRadius: 10,
                 endRadius: 620
             )
             RadialGradient(
-                colors: [Color.purple.opacity(0.055), .clear],
+                colors: [Color.purple.opacity(0.075), .clear],
                 center: .bottomTrailing,
                 startRadius: 40,
                 endRadius: 720
             )
             RadialGradient(
-                colors: [HiveTheme.amber.opacity(0.075), .clear],
+                colors: [HiveTheme.amber.opacity(0.10), .clear],
                 center: .topTrailing,
                 startRadius: 30,
                 endRadius: 520
             )
             RadialGradient(
-                colors: [Color.cyan.opacity(0.035), .clear],
+                colors: [Color.cyan.opacity(0.05), .clear],
                 center: .bottomLeading,
                 startRadius: 80,
                 endRadius: 460
@@ -109,43 +109,71 @@ struct HiveGlassModifier: ViewModifier {
                 if interactive { value = value.interactive() }
                 return value
             }()
+            let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content
-                .glassEffect(glass, in: RoundedRectangle(cornerRadius: corner, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke(
+                .glassEffect(glass, in: shape)
+                .overlay {
+                    ZStack {
+                        shape
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        .white.opacity(0.14),
+                                        .white.opacity(0.02),
+                                        HiveTheme.amber.opacity(0.035),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .blendMode(.plusLighter)
+                            .allowsHitTesting(false)
+                        shape.stroke(
                             LinearGradient(
-                                colors: [.white.opacity(0.34), .white.opacity(0.06), .black.opacity(0.10)],
+                                colors: [.white.opacity(0.42), .white.opacity(0.08), .black.opacity(0.12)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
-                            lineWidth: 0.8
+                            lineWidth: 0.9
                         )
                         .allowsHitTesting(false)
-                )
+                    }
+                }
+                .shadow(color: .black.opacity(0.10), radius: 16, y: 6)
         } else {
             let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content
                 .background(.ultraThinMaterial, in: shape)
                 .background(
                     LinearGradient(
-                        colors: [.white.opacity(0.08), .clear, HiveTheme.amber.opacity(0.035)],
+                        colors: [.white.opacity(0.10), .clear, HiveTheme.amber.opacity(0.045)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     in: shape
                 )
-                .overlay(
-                    shape.stroke(
-                        LinearGradient(
-                            colors: [.white.opacity(0.30), HiveTheme.hairline, .black.opacity(0.12)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.8
-                    )
-                )
-                .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+                .overlay {
+                    ZStack {
+                        shape
+                            .fill(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.13), .clear, HiveTheme.amber.opacity(0.03)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .blendMode(.plusLighter)
+                        shape.stroke(
+                            LinearGradient(
+                                colors: [.white.opacity(0.38), HiveTheme.hairline, .black.opacity(0.14)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.9
+                        )
+                    }
+                }
+                .shadow(color: .black.opacity(0.12), radius: 18, y: 7)
         }
     }
 }

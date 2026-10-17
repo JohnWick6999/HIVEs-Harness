@@ -13,6 +13,11 @@ struct SidebarView: View {
     let onBackground: () -> Void
     let onSettings: () -> Void
 
+    @State private var showArchived = false
+    @State private var renameID: String?
+    @State private var renameDraft = ""
+    @State private var deleteID: String?
+
     private var width: CGFloat { expanded ? 240 : 68 }
 
     var body: some View {
@@ -136,7 +141,7 @@ struct SidebarView: View {
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 7)
-                .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .hiveGlass(corner: 9, tint: HiveTheme.amber.opacity(0.025), interactive: true)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -156,40 +161,176 @@ struct SidebarView: View {
             }
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 2) {
-                    ForEach(state.sessions.prefix(20)) { session in
-                        Button {
-                            state.selectSession(session.id)
-                        } label: {
-                            HStack(spacing: 7) {
-                                Image(systemName: session.id == state.currentThreadID
-                                      ? "bubble.left.fill"
-                                      : "bubble.left")
-                                    .font(.caption)
-                                    .foregroundStyle(session.id == state.currentThreadID
-                                                     ? HiveTheme.amberDeep
-                                                     : .secondary)
-                                Text(session.title)
-                                    .font(.caption)
-                                    .lineLimit(1)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 7)
-                            .background(
-                                session.id == state.currentThreadID
-                                    ? HiveTheme.amber.opacity(0.11)
-                                    : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            )
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(state.sessions) { session in
+                        sessionRow(session)
                     }
                 }
             }
             .frame(maxHeight: 190)
+
+            if !state.archivedSessions.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showArchived.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: showArchived ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("已归档")
+                        Text("\(state.archivedSessions.count)")
+                            .monospacedDigit()
+                        Spacer()
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if showArchived {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 2) {
+                            ForEach(state.archivedSessions) { session in
+                                archivedRow(session)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 120)
+                }
+            }
         }
         .padding(.top, 14)
+        .alert("重命名会话", isPresented: Binding(
+            get: { renameID != nil },
+            set: { if !$0 { renameID = nil } }
+        )) {
+            TextField("会话名称", text: $renameDraft)
+            Button("保存") {
+                if let id = renameID {
+                    state.renameSession(id, title: renameDraft)
+                }
+                renameID = nil
+            }
+            Button("取消", role: .cancel) { renameID = nil }
+        }
+        .confirmationDialog(
+            "删除这个会话?",
+            isPresented: Binding(
+                get: { deleteID != nil },
+                set: { if !$0 { deleteID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                if let id = deleteID {
+                    state.deleteSession(id)
+                }
+                deleteID = nil
+            }
+            Button("取消", role: .cancel) { deleteID = nil }
+        } message: {
+            Text("聊天记录、任务计划与上下文会被一并删除,无法恢复。")
+        }
+    }
+
+    private func sessionRow(_ session: SessionRecord) -> some View {
+        HStack(spacing: 2) {
+            Button {
+                state.selectSession(session.id)
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: session.id == state.currentThreadID
+                          ? "bubble.left.fill"
+                          : "bubble.left")
+                        .font(.caption)
+                        .foregroundStyle(session.id == state.currentThreadID
+                                         ? HiveTheme.amberDeep
+                                         : .secondary)
+                    Text(session.title)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 8)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                Button("重命名") {
+                    renameID = session.id
+                    renameDraft = session.title
+                }
+                Button("归档") { state.archiveSession(session.id) }
+                Divider()
+                Button("删除", role: .destructive) { deleteID = session.id }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 18, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("会话操作")
+        }
+        .padding(.trailing, 4)
+        .background(
+            session.id == state.currentThreadID
+                ? HiveTheme.amber.opacity(0.11)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+        )
+    }
+
+    private func archivedRow(_ session: SessionRecord) -> some View {
+        HStack(spacing: 2) {
+            Button {
+                state.unarchiveSession(session.id)
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "archivebox")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text(session.title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 8)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("恢复并打开")
+
+            Menu {
+                Button("重命名") {
+                    renameID = session.id
+                    renameDraft = session.title
+                }
+                Button("恢复并打开") { state.unarchiveSession(session.id) }
+                Divider()
+                Button("删除", role: .destructive) { deleteID = session.id }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 18, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.trailing, 4)
     }
 
     private var featuresSection: some View {
@@ -277,7 +418,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, expanded ? 8 : 4)
             .padding(.vertical, 7)
-            .background(HiveTheme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .hiveGlass(corner: 10, tint: HiveTheme.amber.opacity(0.025), interactive: true)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
