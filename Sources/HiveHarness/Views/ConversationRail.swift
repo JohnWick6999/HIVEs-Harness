@@ -1,12 +1,13 @@
 import SwiftUI
 import HiveHarnessCore
 
-/// 右侧对话缩略轨:固定间距短横线 + 悬停左侧摘要,点击跳到对应轮次。
+/// 左侧对话缩略轨:短横线 + 悬停摘要 popover,点击跳转。
 struct ConversationRail: View {
     let turns: [ConversationTurn]
     let onSelect: (UUID) -> Void
 
     @State private var hovered: UUID?
+    @State private var hideTask: Task<Void, Never>?
 
     private let markHeight: CGFloat = 16
     private let spacing: CGFloat = 2
@@ -20,7 +21,6 @@ struct ConversationRail: View {
             }
             .padding(.vertical, 8)
         }
-        .scrollClipDisabled()
         .frame(width: 28)
         .frame(maxHeight: 420)
         .mask(
@@ -32,6 +32,7 @@ struct ConversationRail: View {
             .padding(.vertical, -18)
         )
         .padding(.leading, 6)
+        .onDisappear { hideTask?.cancel() }
     }
 
     private func marker(_ turn: ConversationTurn) -> some View {
@@ -41,25 +42,45 @@ struct ConversationRail: View {
             onSelect(turn.targetMessageID)
         } label: {
             Capsule()
-                .fill(hot || active ? HiveTheme.amber : Color.primary.opacity(0.20))
-                .frame(width: hot || active ? 20 : 12, height: 2)
+                .fill(hot || active ? HiveTheme.amber : Color.primary.opacity(0.24))
+                .frame(width: hot || active ? 20 : 13, height: 2)
                 .frame(width: 28, height: 16, alignment: .trailing)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { inside in
-            hovered = inside ? turn.id : (hovered == turn.id ? nil : hovered)
-        }
-        .overlay(alignment: .trailing) {
-            if hot {
-                preview(turn)
-                    .offset(x: 310)
-                    .transition(.opacity.combined(with: .move(edge: .leading)))
-                    .allowsHitTesting(false)
+            if inside {
+                hideTask?.cancel()
+                hovered = turn.id
+            } else if hovered == turn.id {
+                scheduleHide()
             }
         }
-        .animation(.easeOut(duration: 0.12), value: hovered)
+        .popover(isPresented: Binding(
+            get: { hovered == turn.id },
+            set: { if !$0, hovered == turn.id { hovered = nil } }
+        ), arrowEdge: .trailing) {
+            preview(turn)
+                .onHover { inside in
+                    if inside {
+                        hideTask?.cancel()
+                    } else {
+                        scheduleHide()
+                    }
+                }
+        }
         .help("跳到第 \(turn.index) 轮")
+    }
+
+    private func scheduleHide() {
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1200))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.12)) {
+                hovered = nil
+            }
+        }
     }
 
     private func preview(_ turn: ConversationTurn) -> some View {
@@ -80,11 +101,6 @@ struct ConversationRail: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(width: 300, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(HiveTheme.hairline, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        .background(.regularMaterial)
     }
 }
