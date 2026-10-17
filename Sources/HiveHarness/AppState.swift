@@ -142,21 +142,14 @@ final class AppState {
         }
 
         let loadedConfig = configStore.load()
-        let normalized = loadedConfig.normalized()
+        var normalized = loadedConfig.normalized()
+        let migratedKeys = Self.migrateMisplacedAPIKeys(&normalized)
         config = normalized
-        if normalized != loadedConfig {
+        if normalized != loadedConfig || migratedKeys {
             try? configStore.save(normalized)
         }
-        // 旧钥匙串迁移(旧 bundle id 服务名 -> 新服务名)
-        let legacyKeychain = KeychainStore(service: "com.shizukuclaw.app")
-        var legacyKeys = ["llm.api_key", "github.token"]
-        legacyKeys.append(contentsOf: loadedConfig.providers.keys.map { "provider.\($0).api_key" })
-        for key in legacyKeys {
-            let existing = (try? newKeychain.string(forKey: key)) ?? nil
-            if existing == nil, let value = (try? legacyKeychain.string(forKey: key)) ?? nil, !value.isEmpty {
-                try? newKeychain.setString(value, forKey: key)
-            }
-        }
+        // 旧钥匙串迁移不再放在启动路径:读取旧服务会触发系统授权框。
+        // 需要时在设置 → 模型中重新填写 API Key;新 Key 直接写入新服务。
 
         apiKey = ""
         selectedPersona = loadedConfig.agent.defaultPersona
@@ -175,6 +168,36 @@ final class AppState {
                 await self?.startGateway()
             }
         }
+    }
+
+    /// 修复历史配置中把 API Key 误填到模型名的数据;Key 移入 Keychain。
+    @discardableResult
+    private static func migrateMisplacedAPIKeys(
+        _ config: inout AppConfig
+    ) -> Bool {
+        var changed = false
+        let fallbackModel = config.llm.model
+        for id in config.models.keys {
+            guard var model = config.models[id] else { continue }
+            let split = APIKeyDetector.splitMisplacedKey(
+                modelField: model.model,
+                fallbackModel: fallbackModel
+            )
+            guard let key = split.key else { continue }
+            // 不在启动阶段写钥匙串(会触发系统授权框);Key 已从配置移除。
+            _ = key
+            model.model = split.model
+            if model.name.isEmpty || APIKeyDetector.looksLikeAPIKey(model.name) {
+                model.name = split.model
+            }
+            config.models[id] = model
+            changed = true
+        }
+        if APIKeyDetector.looksLikeAPIKey(config.llm.model) {
+            config.llm.model = config.models.values.first?.model ?? "gpt-4o-mini"
+            changed = true
+        }
+        return changed
     }
 
     var threadID: String {

@@ -5,6 +5,7 @@ import HiveHarnessCore
 struct ModelsSettingsView: View {
     @Environment(AppState.self) private var state
     @State private var draftKeys: [String: String] = [:]
+    @State private var errorMessage: String?
 
     private var providerIDs: [String] { state.config.providers.keys.sorted() }
     private var modelIDs: [String] { state.config.models.keys.sorted() }
@@ -26,9 +27,15 @@ struct ModelsSettingsView: View {
             }
             Divider()
             HStack {
-                Text("API Key 只保存在钥匙串,不写入配置文件。模型组按顺序回退。")
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("API Key 只保存在钥匙串,不写入配置文件。模型组按顺序回退。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("保存") { save() }
                     .keyboardShortcut(.defaultAction)
@@ -46,6 +53,14 @@ struct ModelsSettingsView: View {
     }
 
     private func save() {
+        let misplaced = state.config.models.filter {
+            APIKeyDetector.looksLikeAPIKey($0.value.model)
+        }
+        guard misplaced.isEmpty else {
+            errorMessage = "模型名不能填 API Key:请把 Key 填到上方 API Key 字段,模型名填 deepseek-chat 等真实模型 id。"
+            return
+        }
+        errorMessage = nil
         for (id, key) in draftKeys {
             state.setProviderKey(key, providerID: id)
         }
@@ -175,6 +190,11 @@ struct ModelsSettingsView: View {
                         Button(role: .destructive) { removeModel(id) } label: {
                             Image(systemName: "trash")
                         }
+                    }
+                    if APIKeyDetector.looksLikeAPIKey(binding.wrappedValue.model) {
+                        Text("这看起来像 API Key,请填到上方 API Key 字段。")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
                     }
                     HStack {
                         Stepper(
