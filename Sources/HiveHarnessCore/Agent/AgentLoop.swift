@@ -348,6 +348,10 @@ public actor AgentLoop {
 
         \(pluginSection)
 
+        [Microsoft Office]
+        需要创建/读取 Word、Excel、PowerPoint,或导出 PDF 时,使用 office_create / office_read / office_export_pdf。
+        这些工具通过本机 Microsoft Office 自动化执行,仅完全控制模式可用,并会先请求审批。
+
         [技能]
         需要复用成熟流程(代码审查、会议纪要、调研简报等)时,先用 list_skills 查看索引,再用 run_skill 加载对应指令后执行。
         """
@@ -510,6 +514,9 @@ public actor AgentLoop {
         #if os(macOS)
         tools.append(BuiltinTools.RunLocalAgentTool())
         tools.append(ShellTool(workspace: workspace))
+        tools.append(OfficeReadTool(workspace: workspace))
+        tools.append(OfficeCreateTool(workspace: workspace))
+        tools.append(OfficeExportPDFTool(workspace: workspace))
         #endif
         tools.append(contentsOf: extraTools)
         return tools
