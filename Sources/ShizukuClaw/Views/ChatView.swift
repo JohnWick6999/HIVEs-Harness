@@ -6,6 +6,7 @@ struct ChatView: View {
     @State private var input = ""
     @State private var showSettings = false
     @State private var planExpanded = true
+    @State private var showContext = false
 
     var body: some View {
         @Bindable var state = state
@@ -60,6 +61,8 @@ struct ChatView: View {
 
             Spacer()
 
+            contextIndicator
+
             if state.isBusy {
                 ProgressView()
                     .controlSize(.small)
@@ -82,6 +85,105 @@ struct ChatView: View {
     private var personaName: String {
         state.availablePersonas.first { $0.id == state.selectedPersona }?.meta.name
             ?? state.selectedPersona
+    }
+
+    // MARK: - 上下文用量
+
+    private var contextIndicator: some View {
+        Group {
+            if state.contextState.contextLimit > 0 {
+                Button {
+                    showContext.toggle()
+                } label: {
+                    HStack(spacing: 5) {
+                        ZStack {
+                            Circle()
+                                .stroke(.quaternary, lineWidth: 2.5)
+                            Circle()
+                                .trim(from: 0, to: min(1, max(0, state.contextState.usagePercent / 100)))
+                                .stroke(usageColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                        }
+                        .frame(width: 16, height: 16)
+                        Text("\(Int(state.contextState.usagePercent.rounded()))%")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("上下文用量")
+                .popover(isPresented: $showContext, arrowEdge: .bottom) {
+                    contextPopover
+                }
+            }
+        }
+    }
+
+    private var usageColor: Color {
+        let usage = state.contextState.usagePercent
+        if usage >= 85 { return .red }
+        if usage >= 60 { return .orange }
+        return .accentColor
+    }
+
+    private var contextPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("上下文用量")
+                .font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 4) {
+                GridRow {
+                    Text("模型")
+                    Text(state.contextState.model.isEmpty ? state.config.llm.model : state.contextState.model)
+                }
+                GridRow {
+                    Text("窗口")
+                    Text("\(state.contextState.contextLimit) tokens")
+                }
+                GridRow {
+                    Text("可用预算")
+                    Text("\(state.contextState.budget) tokens")
+                }
+                GridRow {
+                    Text("本轮估算")
+                    Text("\(state.contextState.estimatedTokens) tokens")
+                }
+                GridRow {
+                    Text("摘要覆盖")
+                    Text("\(state.contextState.coveredCount) 条消息")
+                }
+            }
+            .font(.caption)
+
+            if state.contextState.prunedTools > 0 {
+                Text("本轮节选 \(state.contextState.prunedTools) 条超长工具结果")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            if state.contextState.hasCompaction {
+                Text("压缩摘要")
+                    .font(.caption.weight(.semibold))
+                ScrollView {
+                    Text(state.contextState.summary)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 170)
+                Text("原始消息仍完整保存在会话历史中;关闭提示后不会丢失。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("尚未触发压缩。达到可用预算的 85% 时,会保留最近两轮并自动生成交接摘要。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(width: 350)
     }
 
     // MARK: - 任务计划

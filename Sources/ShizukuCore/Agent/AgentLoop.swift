@@ -50,6 +50,8 @@ public enum AgentStreamEvent: Sendable {
     case toolCalled(ToolTrace)
     /// 任务计划变更(UI 实时更新)
     case planUpdated(TaskPlan)
+    /// 上下文用量/压缩状态更新
+    case contextUpdated(SessionContextState)
     /// 本地回退(无 API Key)
     case fallback(String)
     /// 工具轮次上限
@@ -79,8 +81,6 @@ public actor AgentLoop {
 
     /// 历史保留条数(对齐原版 40)
     private let historyLimit = 40
-    /// 单次请求携带的最近消息条数
-    private let contextMessageLimit = 12
     /// 用户消息达到此长度自动写入长期记忆(对齐原版 12)
     private let autoMemoryThreshold = 12
     private let imageHint = "不要调用 read_file 去读 png/jpg/gif/webp。"
@@ -399,22 +399,43 @@ public actor AgentLoop {
     ) async throws -> (reply: String, traces: [ToolTrace], engine: String) {
         let streaming = yield != nil
         var messages: [ChatMessage] = [.text(.system, session.systemPrompt)]
-        messages.append(contentsOf: session.history.suffix(contextMessageLimit))
+        messages.append(contentsOf: session.history)
         var traces: [ToolTrace] = []
         var lastPlan = session.plan
+        var lastContext: SessionContextState?
+        let contextManager = ContextManager(
+            store: store,
+            contextWindow: config.llm.contextWindow,
+            maxOutputTokens: config.llm.maxOutputTokens
+        )
 
         for _ in 0..<max(config.agent.maxRounds, 1) {
+            // 每次模型调用前检查预算;压缩只影响请求视图,不改动完整历史
+            let prepared = try await contextManager.prepare(
+                messages: messages,
+                tools: specs,
+                threadID: session.threadID,
+                persona: session.persona,
+                model: config.llm.model,
+                client: client
+            )
+            if prepared.state != lastContext {
+                lastContext = prepared.state
+                yield?(.contextUpdated(prepared.state))
+            }
+            let requestMessages = prepared.messages
+
             let text: String
             let toolCalls: [ToolCall]
             if streaming {
                 (text, toolCalls) = try await streamOnce(
                     client: client,
-                    messages: messages,
+                    messages: requestMessages,
                     specs: specs,
                     yield: yield
                 )
             } else {
-                let response = try await client.chat(messages: messages, tools: specs)
+                let response = try await client.chat(messages: requestMessages, tools: specs)
                 text = response.content
                 toolCalls = response.toolCalls
             }

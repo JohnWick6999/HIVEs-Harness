@@ -50,6 +50,25 @@ struct SettingsView: View {
                 Slider(value: state.config.llm.temperature, in: 0...1.5, step: 0.1)
             }
             HStack {
+                Text("上下文窗口")
+                Spacer()
+                TextField("32768", value: state.config.llm.contextWindow, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+                Text("tokens").font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("最大输出")
+                Spacer()
+                TextField("4096", value: state.config.llm.maxOutputTokens, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+                Text("tokens").font(.caption).foregroundStyle(.secondary)
+            }
+            Text("未知窗口按 32768 估算;达到可用预算 85% 时自动压缩早期历史。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            HStack {
                 Spacer()
                 Button("保存") {
                     state.wrappedValue.saveConfig()

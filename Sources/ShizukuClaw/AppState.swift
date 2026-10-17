@@ -17,6 +17,8 @@ final class AppState {
     var lastToolTrace: [ToolTrace] = []
     /// 当前会话的任务计划(todowrite 实时更新)
     var taskPlan: TaskPlan = .empty
+    /// 当前会话的上下文用量/压缩状态
+    var contextState: SessionContextState = .empty
 
     // MARK: - 依赖
 
@@ -66,10 +68,11 @@ final class AppState {
 
     var threadID: String { "persona:\(selectedPersona)" }
 
-    /// 从存储恢复当前人格的对话历史与任务计划
+    /// 从存储恢复当前人格的对话历史、任务计划与上下文状态
     func loadHistory() {
         messages = (try? store.loadMessages(threadID: threadID, persona: selectedPersona)) ?? []
         taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
+        contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
     }
 
     func selectPersona(_ id: String) {
@@ -99,6 +102,7 @@ final class AppState {
             messages.append(.text(.assistant, result.reply))
             lastToolTrace = result.trace
             taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
+            contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
         } catch {
             errorMessage = "调用失败: \(error.localizedDescription)"
         }
@@ -147,6 +151,8 @@ final class AppState {
                     }
                 case .planUpdated(let plan):
                     taskPlan = plan
+                case .contextUpdated(let context):
+                    contextState = context
                 case .fallback(let text):
                     stopTyping()
                     updateAssistantMessage(id: placeholderID, text: text)
@@ -158,6 +164,7 @@ final class AppState {
                     updateAssistantMessage(id: placeholderID, text: result.reply)
                     lastToolTrace = result.trace
                     taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
+                    contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
                 }
             }
         } catch {

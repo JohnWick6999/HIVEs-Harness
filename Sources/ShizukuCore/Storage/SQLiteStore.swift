@@ -94,6 +94,13 @@ public final class SQLiteStore: @unchecked Sendable {
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (thread_id, persona)
             );
+            CREATE TABLE IF NOT EXISTS session_context (
+                thread_id TEXT NOT NULL,
+                persona TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (thread_id, persona)
+            );
             """)
     }
 
@@ -476,6 +483,51 @@ public final class SQLiteStore: @unchecked Sendable {
         defer { lock.unlock() }
         _ = try executeLocked(
             "DELETE FROM task_plans WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+    }
+
+    // MARK: - 上下文状态
+
+    public func saveContextState(
+        _ state: SessionContextState,
+        threadID: String,
+        persona: String
+    ) throws {
+        let json = try encodeJSON(state)
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            """
+            INSERT INTO session_context(thread_id, persona, state_json, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(thread_id, persona) DO UPDATE SET
+                state_json=excluded.state_json,
+                updated_at=excluded.updated_at
+            """,
+            [.text(threadID), .text(persona), .text(json), .text(now())]
+        )
+    }
+
+    public func loadContextState(threadID: String, persona: String) throws -> SessionContextState {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(
+            "SELECT state_json FROM session_context WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        guard let row = rows.first,
+              let data = textValue(row["state_json"] ?? "").data(using: .utf8),
+              let state = try? JSONDecoder().decode(SessionContextState.self, from: data)
+        else { return .empty }
+        return state
+    }
+
+    public func deleteContextState(threadID: String, persona: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            "DELETE FROM session_context WHERE thread_id = ? AND persona = ?",
             [.text(threadID), .text(persona)]
         )
     }

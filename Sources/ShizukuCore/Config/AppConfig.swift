@@ -12,17 +12,40 @@ public struct AppConfig: Codable, Sendable, Equatable {
         public var baseURL: String
         /// 采样温度
         public var temperature: Double
+        /// 模型上下文窗口(token);未知时按 32768 估算
+        public var contextWindow: Int
+        /// 预留的最大输出 token
+        public var maxOutputTokens: Int
 
         public init(
             provider: String = "openai_compatible",
             model: String = "gpt-4o-mini",
             baseURL: String = "https://api.openai.com/v1",
-            temperature: Double = 0.4
+            temperature: Double = 0.4,
+            contextWindow: Int = 32_768,
+            maxOutputTokens: Int = 4_096
         ) {
             self.provider = provider
             self.model = model
             self.baseURL = baseURL
             self.temperature = temperature
+            self.contextWindow = contextWindow
+            self.maxOutputTokens = maxOutputTokens
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case provider, model, baseURL, temperature, contextWindow, maxOutputTokens
+        }
+
+        /// 兼容旧配置文件:新增字段缺失时使用默认值,避免整份配置解码失败。
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            provider = try container.decodeIfPresent(String.self, forKey: .provider) ?? "openai_compatible"
+            model = try container.decodeIfPresent(String.self, forKey: .model) ?? "gpt-4o-mini"
+            baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL) ?? "https://api.openai.com/v1"
+            temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.4
+            contextWindow = try container.decodeIfPresent(Int.self, forKey: .contextWindow) ?? 32_768
+            maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens) ?? 4_096
         }
     }
 

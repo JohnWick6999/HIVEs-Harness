@@ -218,7 +218,7 @@ struct AgentLoopTests {
                 text += delta
             case .finished(let result):
                 finished = result
-            case .fallback, .toolCalled, .limitReached, .planUpdated:
+            case .fallback, .toolCalled, .limitReached, .planUpdated, .contextUpdated:
                 break
             }
         }

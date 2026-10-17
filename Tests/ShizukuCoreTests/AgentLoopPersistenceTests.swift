@@ -23,7 +23,7 @@ struct AgentLoopPersistenceTests {
         #expect(assistant?.fileAttachments.first?.path.hasSuffix("out.txt") == true)
     }
 
-    @Test("请求只携带最近 12 条会话消息")
+    @Test("请求携带完整历史,由上下文管理器控制预算")
     func contextWindow() async throws {
         let dbDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("shizuku-db-\(UUID().uuidString)")
@@ -51,8 +51,8 @@ struct AgentLoopPersistenceTests {
         _ = try await loop.invoke(message: "最新问题")
 
         let request = try #require(mock.capturedMessages().first)
-        // 1 条 system + 最近 12 条(含本轮用户消息)
-        #expect(request.count == 13)
+        // 1 条 system + 20 条历史 + 本轮用户消息(小上下文不触发压缩)
+        #expect(request.count == 22)
         #expect(request.first?.role == .system)
         #expect(request.last?.content.plainText == "最新问题")
     }
