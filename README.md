@@ -17,6 +17,7 @@
 | 🧠 长期记忆 | SQLite 存储 + 哈希向量余弦检索,聊天自动记忆(≥12 字),可视化管理页 | ✅ |
 | 🔧 工具调用 | 文件读写(工作区沙箱)、记忆检索/写入、本地 Agent CLI(macOS) | ✅ |
 | ✅ 任务计划 | todowrite/todoread,计划持久化 + 实时进度面板,运行绑定防跨轮串写 | ✅ |
+| 🗂️ 多会话 | 会话列表 / 新建 / 撤销上一轮 / 分叉 / 清空 / 删除,按人格隔离,旧历史自动迁移 | ✅ |
 | 🧮 上下文压缩 | CJK token 估算,85% 自动摘要压缩,保留最近两轮,原始消息不删除,顶栏用量环 | ✅ |
 | 🛡️ 工作模式与审批 | 对话/安全/完全控制三档;读任意路径、写受模式限制;外部写入与执行需审批;Touch ID 解锁 | ✅ |
 | 📄 文件产物卡片 | 工具产出的文件渲染为可点击附件,点击打开 / Finder 定位 | ✅ |
@@ -47,7 +48,7 @@
 |---|---|
 | `Config/` | AppConfig(Codable)、KeychainStore、ModelRegistry(提供商/模型/回退组) |
 | `LLM/` | LLMClient 协议、OpenAI 兼容客户端(SSE 流式)、本地 Ollama 客户端 |
-| `Storage/` | 系统 SQLite3 封装(chat_records/memories/checkpoints/kv_store/task_plans/session_context)、哈希向量余弦检索 |
+| `Storage/` | 系统 SQLite3 封装(chat_records/memories/checkpoints/kv_store/task_plans/session_context/sessions)、哈希向量余弦检索 |
 | `Tools/` | Tool 协议(async)、注册表、SafePath 工作区沙箱、6 个内置工具 + todowrite/todoread |
 | `Agent/` | AgentLoop actor:工具循环、无 Key 回退、checkpoint、自动记忆;TaskPlan 计划;ContextManager 压缩 |
 | `Persona/` | Persona 模型 + 5 内置人格(Bundle 资源,id=文件名) |
@@ -59,7 +60,7 @@
 - **Swift 6.2+**(清单按 6.2 声明,当前用 6.4 / Xcode-beta 工具链验证)/ SwiftUI / Swift Concurrency(actor + async/await)
 - **Swift Package Manager**,**零第三方依赖**(系统 SQLite3 + Foundation + Security)
 - 部署目标:macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
-- 测试:swift-testing,91 项用例覆盖全部核心模块
+- 测试:swift-testing,93 项用例覆盖全部核心模块
 
 ## 🚀 构建与运行
 

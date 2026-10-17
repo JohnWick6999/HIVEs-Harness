@@ -712,8 +712,8 @@ public actor AgentLoop {
             persona: session.persona,
             messages: Array(history.suffix(historyLimit))
         )
-        try? store.addChatRecord(persona: session.persona, role: "user", content: session.userText)
-        try? store.addChatRecord(persona: session.persona, role: "assistant", content: reply)
+        try? store.addChatRecord(persona: session.persona, role: "user", content: session.userText, threadID: session.threadID)
+        try? store.addChatRecord(persona: session.persona, role: "assistant", content: reply, threadID: session.threadID)
         if session.userText.count >= autoMemoryThreshold {
             try? store.addMemory(persona: session.persona, content: session.userText, kind: "long_term")
         }

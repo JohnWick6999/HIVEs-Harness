@@ -101,7 +101,22 @@ public final class SQLiteStore: @unchecked Sendable {
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (thread_id, persona)
             );
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT NOT NULL,
+                persona TEXT NOT NULL,
+                title TEXT NOT NULL,
+                preview TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (id, persona)
+            );
             """)
+
+        // 旧库没有 thread_id:补列以便按会话清理聊天记录
+        let columns = try queryLocked("PRAGMA table_info(chat_records)")
+        if !columns.contains(where: { textValue($0["name"] ?? "") == "thread_id" }) {
+            try execLocked("ALTER TABLE chat_records ADD COLUMN thread_id TEXT")
+        }
     }
 
     // MARK: - 底层执行
@@ -198,12 +213,17 @@ public final class SQLiteStore: @unchecked Sendable {
 
     // MARK: - 聊天记录
 
-    public func addChatRecord(persona: String, role: String, content: String) throws -> Int64 {
+    public func addChatRecord(
+        persona: String,
+        role: String,
+        content: String,
+        threadID: String? = nil
+    ) throws -> Int64 {
         lock.lock()
         defer { lock.unlock() }
         return try executeLocked(
-            "INSERT INTO chat_records(persona, role, content, created_at) VALUES (?, ?, ?, ?)",
-            [.text(persona), .text(role), .text(content), .text(now())]
+            "INSERT INTO chat_records(persona, role, content, created_at, thread_id) VALUES (?, ?, ?, ?, ?)",
+            [.text(persona), .text(role), .text(content), .text(now()), .text(threadID ?? "")]
         )
     }
 
@@ -214,6 +234,34 @@ public final class SQLiteStore: @unchecked Sendable {
             "SELECT id, persona, role, content, created_at FROM chat_records ORDER BY id DESC LIMIT ? OFFSET ?",
             [.integer(Int64(limit)), .integer(Int64(offset))]
         )
+        return rows.map { row in
+            ChatRecord(
+                id: intValue(row["id"] ?? 0),
+                persona: textValue(row["persona"] ?? ""),
+                role: textValue(row["role"] ?? ""),
+                content: textValue(row["content"] ?? ""),
+                createdAt: textValue(row["created_at"] ?? "")
+            )
+        }
+    }
+
+    /// 按会话读取聊天记录(用于会话删除校验/记录页)。
+    public func listChatRecords(
+        threadID: String,
+        persona: String? = nil,
+        limit: Int = 200
+    ) throws -> [ChatRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        var sql = "SELECT id, persona, role, content, created_at FROM chat_records WHERE thread_id = ?"
+        var values: [SQLiteValue] = [.text(threadID)]
+        if let persona {
+            sql += " AND persona = ?"
+            values.append(.text(persona))
+        }
+        sql += " ORDER BY id DESC LIMIT ?"
+        values.append(.integer(Int64(limit)))
+        let rows = try queryLocked(sql, values)
         return rows.map { row in
             ChatRecord(
                 id: intValue(row["id"] ?? 0),
@@ -528,6 +576,82 @@ public final class SQLiteStore: @unchecked Sendable {
         defer { lock.unlock() }
         _ = try executeLocked(
             "DELETE FROM session_context WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+    }
+
+    // MARK: - 会话索引
+
+    public func upsertSession(_ session: SessionRecord) throws {
+        let created = ISO8601DateFormatter().string(from: session.createdAt)
+        let updated = ISO8601DateFormatter().string(from: session.updatedAt)
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            """
+            INSERT INTO sessions(id, persona, title, preview, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id, persona) DO UPDATE SET
+                title=excluded.title,
+                preview=excluded.preview,
+                updated_at=excluded.updated_at
+            """,
+            [
+                .text(session.id),
+                .text(session.persona),
+                .text(session.title),
+                .text(session.preview),
+                .text(created),
+                .text(updated),
+            ]
+        )
+    }
+
+    public func listSessions(persona: String) throws -> [SessionRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+        let rows = try queryLocked(
+            """
+            SELECT id, persona, title, preview, created_at, updated_at
+            FROM sessions WHERE persona = ? ORDER BY updated_at DESC
+            """,
+            [.text(persona)]
+        )
+        let formatter = ISO8601DateFormatter()
+        return rows.map { row in
+            SessionRecord(
+                id: textValue(row["id"] ?? ""),
+                persona: textValue(row["persona"] ?? ""),
+                title: textValue(row["title"] ?? ""),
+                preview: textValue(row["preview"] ?? ""),
+                createdAt: formatter.date(from: textValue(row["created_at"] ?? "")) ?? Date(),
+                updatedAt: formatter.date(from: textValue(row["updated_at"] ?? "")) ?? Date()
+            )
+        }
+    }
+
+    /// 删除会话及其 checkpoint、任务计划、上下文状态与聊天记录。
+    public func deleteSession(threadID: String, persona: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        _ = try executeLocked(
+            "DELETE FROM sessions WHERE id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        _ = try executeLocked(
+            "DELETE FROM checkpoints WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        _ = try executeLocked(
+            "DELETE FROM task_plans WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        _ = try executeLocked(
+            "DELETE FROM session_context WHERE thread_id = ? AND persona = ?",
+            [.text(threadID), .text(persona)]
+        )
+        _ = try executeLocked(
+            "DELETE FROM chat_records WHERE thread_id = ? AND persona = ?",
             [.text(threadID), .text(persona)]
         )
     }

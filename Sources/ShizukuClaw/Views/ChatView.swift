@@ -29,6 +29,11 @@ struct ChatView: View {
             SettingsView()
                 .environment(state)
         }
+        .onChange(of: state.pendingDraft) { _, draft in
+            guard let draft else { return }
+            input = draft
+            state.pendingDraft = nil
+        }
     }
 
     // MARK: - 头部
@@ -63,6 +68,8 @@ struct ChatView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
 
+            sessionMenu
+
             modeMenu
 
             Text(state.activeModelName)
@@ -96,6 +103,36 @@ struct ChatView: View {
     private var personaName: String {
         state.availablePersonas.first { $0.id == state.selectedPersona }?.meta.name
             ?? state.selectedPersona
+    }
+
+    // MARK: - 会话
+
+    private var sessionMenu: some View {
+        Menu {
+            Button("新建会话") { state.newSession() }
+            Divider()
+            ForEach(state.sessions) { session in
+                Button {
+                    state.selectSession(session.id)
+                } label: {
+                    if session.id == state.currentThreadID {
+                        Label(session.title, systemImage: "checkmark")
+                    } else {
+                        Text(session.title)
+                    }
+                }
+            }
+            Divider()
+            Button("分叉当前会话") { state.forkCurrentSession() }
+            Button("撤销上一轮") { state.undoLastTurn() }
+            Button("清空当前会话") { state.clearCurrentSession() }
+            Button("删除当前会话", role: .destructive) { state.deleteCurrentSession() }
+        } label: {
+            Image(systemName: "bubble.left.and.bubble.right")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("会话")
     }
 
     // MARK: - 工作模式与审批

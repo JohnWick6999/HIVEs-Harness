@@ -22,6 +22,12 @@ final class AppState {
     var contextState: SessionContextState = .empty
     /// 等待用户处理的审批请求
     var pendingApproval: ApprovalRequest?
+    /// 当前人格下的会话列表
+    var sessions: [SessionRecord] = []
+    /// 当前会话 id
+    var currentThreadID: String = ""
+    /// 撤销后回填到输入框的草稿
+    var pendingDraft: String?
 
     // MARK: - 依赖
 
@@ -86,10 +92,12 @@ final class AppState {
         selectedPersona = loadedConfig.agent.defaultPersona
         store = try! SQLiteStore(path: base.appendingPathComponent("agent.db").path)
 
-        loadHistory()
+        loadSessions()
     }
 
-    var threadID: String { "persona:\(selectedPersona)" }
+    var threadID: String {
+        currentThreadID.isEmpty ? "persona:\(selectedPersona)" : currentThreadID
+    }
 
     /// 从存储恢复当前人格的对话历史、任务计划与上下文状态
     func loadHistory() {
@@ -100,7 +108,177 @@ final class AppState {
 
     func selectPersona(_ id: String) {
         selectedPersona = id
+        loadSessions()
+    }
+
+    // MARK: - 会话
+
+    /// 载入当前人格的会话列表;旧版 `persona:<id>` 历史会自动登记为“历史会话”。
+    func loadSessions() {
+        var list = (try? store.listSessions(persona: selectedPersona)) ?? []
+        if list.isEmpty {
+            let legacyID = "persona:\(selectedPersona)"
+            let legacyMessages = (try? store.loadMessages(
+                threadID: legacyID,
+                persona: selectedPersona
+            )) ?? []
+            if !legacyMessages.isEmpty {
+                let record = SessionRecord(
+                    id: legacyID,
+                    persona: selectedPersona,
+                    title: "历史会话",
+                    preview: legacyMessages.last?.content.plainText ?? ""
+                )
+                try? store.upsertSession(record)
+                list = [record]
+            }
+        }
+        if list.isEmpty {
+            let record = SessionRecord(
+                id: "s_" + UUID().uuidString.lowercased(),
+                persona: selectedPersona,
+                title: "新会话"
+            )
+            try? store.upsertSession(record)
+            list = [record]
+        }
+        sessions = list
+        if let first = list.first {
+            currentThreadID = first.id
+        }
         loadHistory()
+    }
+
+    func newSession() {
+        let record = SessionRecord(
+            id: "s_" + UUID().uuidString.lowercased(),
+            persona: selectedPersona,
+            title: "新会话"
+        )
+        try? store.upsertSession(record)
+        sessions = (try? store.listSessions(persona: selectedPersona)) ?? [record]
+        currentThreadID = record.id
+        messages = []
+        taskPlan = .empty
+        contextState = .empty
+        lastToolTrace = []
+        pendingDraft = nil
+    }
+
+    func selectSession(_ id: String) {
+        guard sessions.contains(where: { $0.id == id }) else { return }
+        currentThreadID = id
+        lastToolTrace = []
+        loadHistory()
+    }
+
+    /// 复制当前可见消息到独立会话(重新生成消息 id)。
+    func forkCurrentSession() {
+        let source = (try? store.listSessions(persona: selectedPersona))?
+            .first { $0.id == currentThreadID }
+        let sourceMessages = (try? store.loadMessages(
+            threadID: currentThreadID,
+            persona: selectedPersona
+        )) ?? []
+        guard !sourceMessages.isEmpty else {
+            errorMessage = "当前会话为空,无法分叉"
+            return
+        }
+        let target = "s_" + UUID().uuidString.lowercased()
+        let copied = sourceMessages.map { message in
+            ChatMessage(
+                role: message.role,
+                content: message.content,
+                toolCalls: message.toolCalls,
+                toolCallID: message.toolCallID,
+                toolName: message.toolName,
+                fileAttachments: message.fileAttachments
+            )
+        }
+        try? store.saveMessages(threadID: target, persona: selectedPersona, messages: copied)
+        let record = SessionRecord(
+            id: target,
+            persona: selectedPersona,
+            title: (source?.title ?? "会话") + " · 分叉",
+            preview: source?.preview ?? ""
+        )
+        try? store.upsertSession(record)
+        sessions = (try? store.listSessions(persona: selectedPersona)) ?? [record]
+        currentThreadID = target
+        loadHistory()
+    }
+
+    /// 撤销最近一轮:删除该用户消息及其后的回复,把内容回填为草稿。
+    func undoLastTurn() {
+        let all = (try? store.loadMessages(threadID: threadID, persona: selectedPersona)) ?? []
+        guard let index = all.lastIndex(where: { $0.role == .user }) else {
+            errorMessage = "没有可撤销的用户消息"
+            return
+        }
+        let kept = Array(all.prefix(index))
+        try? store.saveMessages(threadID: threadID, persona: selectedPersona, messages: kept)
+        try? store.deleteTaskPlan(threadID: threadID, persona: selectedPersona)
+        try? store.deleteContextState(threadID: threadID, persona: selectedPersona)
+        messages = kept
+        taskPlan = .empty
+        contextState = .empty
+        lastToolTrace = []
+        pendingDraft = all[index].content.plainText
+        touchSession(userText: all[index].content.plainText, reply: "", threadID: threadID, persona: selectedPersona)
+    }
+
+    func clearCurrentSession() {
+        try? store.saveMessages(threadID: threadID, persona: selectedPersona, messages: [])
+        try? store.deleteTaskPlan(threadID: threadID, persona: selectedPersona)
+        try? store.deleteContextState(threadID: threadID, persona: selectedPersona)
+        messages = []
+        taskPlan = .empty
+        contextState = .empty
+        lastToolTrace = []
+    }
+
+    func deleteCurrentSession() {
+        let deleting = currentThreadID
+        try? store.deleteSession(threadID: deleting, persona: selectedPersona)
+        sessions = (try? store.listSessions(persona: selectedPersona)) ?? []
+        if let first = sessions.first {
+            currentThreadID = first.id
+            loadHistory()
+        } else {
+            newSession()
+        }
+    }
+
+    /// 更新会话标题/预览与最近时间。
+    private func touchSession(
+        userText: String,
+        reply: String,
+        threadID: String,
+        persona: String
+    ) {
+        let existing = (try? store.listSessions(persona: persona))?
+            .first { $0.id == threadID }
+        let now = Date()
+        let trimmedUser = userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if let existing, existing.title != "新会话", !existing.title.isEmpty {
+            title = existing.title
+        } else {
+            title = trimmedUser.isEmpty ? "新会话" : String(trimmedUser.prefix(24))
+        }
+        let preview = String(reply.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        let record = SessionRecord(
+            id: threadID,
+            persona: persona,
+            title: title,
+            preview: preview,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+        )
+        try? store.upsertSession(record)
+        if persona == selectedPersona {
+            sessions = (try? store.listSessions(persona: persona)) ?? sessions
+        }
     }
 
     // MARK: - 工作模式与审批
@@ -166,6 +344,8 @@ final class AppState {
     func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isBusy else { return }
+        let requestPersona = selectedPersona
+        let requestThread = threadID
 
         messages.append(.text(.user, trimmed))
         isBusy = true
@@ -186,11 +366,23 @@ final class AppState {
             extraTools: mcpTools
         )
         do {
-            let result = try await loop.invoke(message: trimmed, persona: selectedPersona)
-            messages.append(.text(.assistant, result.reply))
-            lastToolTrace = result.trace
-            taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
-            contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
+            let result = try await loop.invoke(
+                message: trimmed,
+                persona: requestPersona,
+                threadID: requestThread
+            )
+            if requestThread == currentThreadID {
+                messages.append(.text(.assistant, result.reply))
+                lastToolTrace = result.trace
+                taskPlan = (try? store.loadTaskPlan(threadID: requestThread, persona: requestPersona)) ?? .empty
+                contextState = (try? store.loadContextState(threadID: requestThread, persona: requestPersona)) ?? .empty
+            }
+            touchSession(
+                userText: trimmed,
+                reply: result.reply,
+                threadID: requestThread,
+                persona: requestPersona
+            )
         } catch {
             errorMessage = "调用失败: \(error.localizedDescription)"
         }
@@ -200,6 +392,9 @@ final class AppState {
     func sendStreaming(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isBusy else { return }
+        let requestPersona = selectedPersona
+        let requestThread = threadID
+        var streamedReply = ""
 
         messages.append(.text(.user, trimmed))
         isBusy = true
@@ -213,6 +408,12 @@ final class AppState {
             if pendingApproval != nil {
                 resolveApproval(.reject)
             }
+            touchSession(
+                userText: trimmed,
+                reply: streamedReply,
+                threadID: requestThread,
+                persona: requestPersona
+            )
             isBusy = false
         }
 
@@ -234,7 +435,11 @@ final class AppState {
             extraTools: mcpTools
         )
         do {
-            for try await event in await loop.stream(message: trimmed, persona: selectedPersona) {
+            for try await event in await loop.stream(
+                message: trimmed,
+                persona: requestPersona,
+                threadID: requestThread
+            ) {
                 switch event {
                 case .chunk(let delta):
                     // 增量进缓冲区,由打字动画 Task 平滑渲染
@@ -250,21 +455,26 @@ final class AppState {
                         messages[index] = message
                     }
                 case .planUpdated(let plan):
-                    taskPlan = plan
+                    if requestThread == currentThreadID { taskPlan = plan }
                 case .contextUpdated(let context):
-                    contextState = context
+                    if requestThread == currentThreadID { contextState = context }
                 case .fallback(let text):
                     stopTyping()
+                    streamedReply = text
                     updateAssistantMessage(id: placeholderID, text: text)
                 case .limitReached(let text):
                     stopTyping()
+                    streamedReply = text
                     updateAssistantMessage(id: placeholderID, text: text)
                 case .finished(let result):
                     stopTyping()
+                    streamedReply = result.reply
                     updateAssistantMessage(id: placeholderID, text: result.reply)
-                    lastToolTrace = result.trace
-                    taskPlan = (try? store.loadTaskPlan(threadID: threadID, persona: selectedPersona)) ?? .empty
-                    contextState = (try? store.loadContextState(threadID: threadID, persona: selectedPersona)) ?? .empty
+                    if requestThread == currentThreadID {
+                        lastToolTrace = result.trace
+                        taskPlan = (try? store.loadTaskPlan(threadID: requestThread, persona: requestPersona)) ?? .empty
+                        contextState = (try? store.loadContextState(threadID: requestThread, persona: requestPersona)) ?? .empty
+                    }
                 }
             }
         } catch {
