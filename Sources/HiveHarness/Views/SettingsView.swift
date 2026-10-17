@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(HiveTheme.appearanceKey) private var appearance = HiveAppearance.system.rawValue
     @AppStorage(HiveTheme.glassIntensityKey) private var glassIntensity = HiveTheme.defaultGlassIntensity
     @AppStorage(HiveTheme.sidebarWidthKey) private var sidebarWidth = HiveTheme.defaultSidebarWidth
+    @AppStorage(HiveTheme.showUsageBarKey) private var showUsageBar = true
 
     enum Section: String, CaseIterable, Identifiable {
         case appearance, models, agent, personas, mcp, skills, gateway, memory, about
@@ -228,10 +229,23 @@ struct SettingsView: View {
                 }
                 .hiveCard(padding: 14)
 
+                Toggle(isOn: $showUsageBar) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("显示底部 Token 用量栏")
+                            .font(.callout)
+                        Text("关闭后隐藏底部的 token、缓存命中、轮数与工具调用统计。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+                .hiveCard(padding: 14)
+
                 Button("恢复默认外观") {
                     appearance = HiveAppearance.system.rawValue
                     glassIntensity = HiveTheme.defaultGlassIntensity
                     sidebarWidth = HiveTheme.defaultSidebarWidth
+                    showUsageBar = true
                 }
                 .buttonStyle(.bordered)
             }
