@@ -98,11 +98,12 @@ struct TaskPlanTests {
         #expect(plan.running == false)
 
         _ = try await fixture.loop.invoke(message: "继续")
-        let system = try #require(fixture.mock.capturedMessages().last?.first)
-        #expect(system.role == .system)
-        #expect(system.content.plainText.contains("[任务计划]"))
-        #expect(system.content.plainText.contains("[当前会话任务进度]"))
-        #expect(system.content.plainText.contains("拆分步骤"))
+        let request = try #require(fixture.mock.capturedMessages().last)
+        let planContext = request.first {
+            $0.content.plainText.contains("[当前会话任务进度]")
+        }
+        #expect(planContext != nil)
+        #expect(planContext?.content.plainText.contains("拆分步骤") == true)
 
         plan = try fixture.store.loadTaskPlan(threadID: "persona:assistant", persona: "assistant")
         #expect(plan.running == false)

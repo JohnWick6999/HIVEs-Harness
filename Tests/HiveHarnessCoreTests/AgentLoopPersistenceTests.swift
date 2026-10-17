@@ -51,8 +51,8 @@ struct AgentLoopPersistenceTests {
         _ = try await loop.invoke(message: "最新问题")
 
         let request = try #require(mock.capturedMessages().first)
-        // 1 条 system + 20 条历史 + 本轮用户消息(小上下文不触发压缩)
-        #expect(request.count == 22)
+        // 稳定 system + 20 条历史 + 动态上下文 system + 本轮用户消息
+        #expect(request.count == 23)
         #expect(request.first?.role == .system)
         #expect(request.last?.content.plainText == "最新问题")
     }

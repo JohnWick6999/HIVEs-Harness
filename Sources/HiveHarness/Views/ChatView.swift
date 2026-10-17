@@ -835,7 +835,7 @@ struct ChatView: View {
             Text("\(state.usageStats.totalTokens.formatted()) tok")
                 .monospacedDigit()
             if state.usageStats.promptTokens > 0 {
-                Text("缓存 \(cachePercent)%")
+                Text("缓存 \(cachePercent)")
                     .monospacedDigit()
             }
             if state.lastRunUsage.totalTokens > 0 {

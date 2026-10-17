@@ -34,6 +34,20 @@ struct MarkdownTests {
         #expect(blocks.contains(.divider))
     }
 
+    @Test("管道表格解析")
+    func table() throws {
+        let table = try #require(MarkdownTableParser.parse("""
+        | 工具 | 用途 |
+        | --- | --- |
+        | glob | 查找文件 |
+        | grep | 搜索内容 |
+        """))
+        #expect(table.headers == ["工具", "用途"])
+        #expect(table.rows.count == 2)
+        #expect(table.rows[0] == ["glob", "查找文件"])
+        #expect(table.rows[1] == ["grep", "搜索内容"])
+    }
+
     @Test("无空格标题也识别")
     func headingWithoutSpace() {
         #expect(MarkdownParser.parse("###标题").contains(.heading(level: 3, text: "标题")))

@@ -32,11 +32,15 @@ struct HiveMarkdownView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
         case .paragraph(let value):
-            Text(attributed(value))
-                .font(.system(.body, design: .rounded))
-                .lineSpacing(3)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            if let table = MarkdownTableParser.parse(value) {
+                MarkdownTableView(table: table)
+            } else {
+                Text(attributed(value))
+                    .font(.system(.body, design: .rounded))
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
         case .bullet(let items):
             VStack(alignment: .leading, spacing: 4) {
@@ -119,6 +123,58 @@ struct HiveMarkdownView: View {
         case .divider: return 3
         default: return 0
         }
+    }
+}
+
+private struct MarkdownTableView: View {
+    let table: MarkdownTable
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(table.headers.enumerated()), id: \.offset) { _, header in
+                        cell(header, header: true)
+                    }
+                }
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, value in
+                            cell(value, header: false)
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(HiveTheme.hairline, lineWidth: 1)
+            )
+        }
+        .frame(maxWidth: 760, alignment: .leading)
+    }
+
+    private func cell(_ value: String, header: Bool) -> some View {
+        Text(inline(value))
+            .font(.system(header ? .caption : .caption2, design: .rounded))
+            .fontWeight(header ? .semibold : .regular)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .frame(minWidth: 70, alignment: .leading)
+            .background(header ? Color.primary.opacity(0.055) : Color.clear)
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(HiveTheme.hairline).frame(width: 1)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(HiveTheme.hairline).frame(height: 1)
+            }
+    }
+
+    private func inline(_ value: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: value,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(value)
     }
 }
 
