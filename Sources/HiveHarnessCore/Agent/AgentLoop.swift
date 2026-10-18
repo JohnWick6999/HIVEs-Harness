@@ -430,16 +430,41 @@ public actor AgentLoop {
         let supportsReasoning = ModelContextResolver.supportsReasoningEffort(
             for: resolved.model.model
         )
-        return OpenAICompatibleClient(
-            baseURL: resolved.provider.baseURL,
-            apiKey: resolved.apiKey,
-            model: resolved.model.model,
-            temperature: resolved.model.temperature,
-            reasoningEffort: supportsReasoning
-                ? (isDeepSeek ? effort.deepSeekValue : effort.apiValue)
-                : nil,
-            thinkingEnabled: isDeepSeek ? (effort != .off) : nil
-        )
+        let reasoning = supportsReasoning
+            ? (isDeepSeek ? effort.deepSeekValue : effort.apiValue)
+            : nil
+        let thinking = isDeepSeek ? (effort != .off) : nil
+        switch resolved.provider.effectiveAPIFormat {
+        case .chatCompletions:
+            return OpenAICompatibleClient(
+                baseURL: resolved.provider.baseURL,
+                apiKey: resolved.apiKey,
+                model: resolved.model.model,
+                temperature: resolved.model.temperature,
+                reasoningEffort: reasoning,
+                thinkingEnabled: thinking
+            )
+        case .responses:
+            return ResponsesAPIClient(
+                baseURL: resolved.provider.baseURL,
+                apiKey: resolved.apiKey,
+                model: resolved.model.model,
+                temperature: resolved.model.temperature,
+                reasoningEffort: reasoning,
+                thinkingEnabled: thinking,
+                maxOutputTokens: resolved.model.maxOutputTokens
+            )
+        case .anthropicMessages:
+            return AnthropicAPIClient(
+                baseURL: resolved.provider.baseURL,
+                apiKey: resolved.apiKey,
+                model: resolved.model.model,
+                temperature: resolved.model.temperature,
+                reasoningEffort: reasoning,
+                thinkingEnabled: thinking,
+                maxOutputTokens: resolved.model.maxOutputTokens
+            )
+        }
     }
 
     private func localFallbackReply(_ session: Session) -> String {

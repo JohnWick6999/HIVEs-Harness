@@ -349,4 +349,204 @@ struct LLMClientSuite {
         let client = LocalOllamaClient()
         #expect(try await client.embed(text: "x") == nil)
     }
+    @Test("Responses: 非流式解析 reasoning / output / tool call")
+    func responsesChat() async throws {
+        let session = mockSession()
+        let box = RequestBox()
+        MockURLProtocol.requestHandler = { request in
+            box.set(request)
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let json = #"""
+            {"status":"completed","output":[
+              {"type":"reasoning","content":[{"type":"reasoning_text","text":"想一想"}]},
+              {"type":"message","content":[{"type":"output_text","text":"你好"}]},
+              {"type":"function_call","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"a.txt\"}"}
+            ],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,
+              "input_tokens_details":{"cached_tokens":4},
+              "output_tokens_details":{"reasoning_tokens":2}}}
+            """#
+            return (response, Data(json.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = ResponsesAPIClient(
+            baseURL: "https://api.example.com/v1", apiKey: "sk", model: "deepseek-v4-pro",
+            maxOutputTokens: 2048, session: session
+        )
+        let result = try await client.chat(
+            messages: [.text(.system, "你是助手"), .text(.user, "hi")],
+            tools: [ToolSpec(name: "read_file", description: "read")]
+        )
+        #expect(result.content == "你好")
+        #expect(result.reasoningContent == "想一想")
+        #expect(result.toolCalls.first?.name == "read_file")
+        #expect(result.toolCalls.first?.arguments.contains("a.txt") == true)
+        #expect(result.usage?.cachedTokens == 4)
+        #expect(result.finishReason == "stop")
+
+        let request = try #require(box.get())
+        #expect(request.url?.path == "/v1/responses")
+        let body = try #require(bodyData(from: request))
+        let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(object["instructions"] as? String == "你是助手")
+        let tools = try #require(object["tools"] as? [[String: Any]])
+        #expect(tools.first?["name"] as? String == "read_file")
+        #expect(tools.first?["function"] == nil)
+    }
+
+    @Test("Responses: 流式 reasoning / output / function_call 累积")
+    func responsesStream() async throws {
+        let session = mockSession()
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let sse = #"""
+            event: response.reasoning_text.delta
+            data: {"type":"response.reasoning_text.delta","delta":"想"}
+
+            event: response.output_text.delta
+            data: {"type":"response.output_text.delta","delta":"你好"}
+
+            event: response.output_item.added
+            data: {"type":"response.output_item.added","item":{"id":"fc1","type":"function_call","call_id":"call_1","name":"read_file","arguments":""}}
+
+            event: response.function_call_arguments.delta
+            data: {"type":"response.function_call_arguments.delta","item_id":"fc1","delta":"{\"path\":\"a.txt\"}"}
+
+            event: response.completed
+            data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":10,"output_tokens":5,"input_tokens_details":{"cached_tokens":2}}}}
+
+            """#
+            return (response, Data(sse.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = ResponsesAPIClient(
+            baseURL: "https://api.example.com/v1", apiKey: "sk", model: "m", session: session
+        )
+        var text = ""
+        var reasoning = ""
+        var calls: [ToolCall] = []
+        var usage = LLMUsage.zero
+        for try await chunk in client.stream(messages: [.text(.user, "hi")], tools: nil) {
+            text += chunk.delta
+            reasoning += chunk.reasoningDelta ?? ""
+            if let accumulator = chunk.toolCallAccumulator { calls = accumulator }
+            if let chunkUsage = chunk.usage { usage = usage + chunkUsage }
+        }
+        #expect(text == "你好")
+        #expect(reasoning == "想")
+        #expect(calls.first?.name == "read_file")
+        #expect(calls.first?.arguments.contains("a.txt") == true)
+        #expect(usage.cachedTokens == 2)
+    }
+
+    @Test("Anthropic: 非流式解析 text / thinking / tool_use")
+    func anthropicChat() async throws {
+        let session = mockSession()
+        let box = RequestBox()
+        MockURLProtocol.requestHandler = { request in
+            box.set(request)
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let json = """
+            {"type":"message","role":"assistant","content":[
+              {"type":"thinking","thinking":"想"},
+              {"type":"text","text":"你好"},
+              {"type":"tool_use","id":"tool_1","name":"read_file","input":{"path":"a.txt"}}
+            ],"stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":3}}
+            """
+            return (response, Data(json.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = AnthropicAPIClient(
+            baseURL: "https://api.deepseek.com", apiKey: "sk", model: "deepseek-v4-pro",
+            session: session
+        )
+        let result = try await client.chat(
+            messages: [.text(.system, "你是助手"), .text(.user, "hi")],
+            tools: [ToolSpec(name: "read_file", description: "read")]
+        )
+        #expect(result.content == "你好")
+        #expect(result.reasoningContent == "想")
+        #expect(result.toolCalls.first?.name == "read_file")
+        #expect(result.toolCalls.first?.arguments.contains("a.txt") == true)
+        #expect(result.usage?.cachedTokens == 3)
+        #expect(result.finishReason == "tool_calls")
+
+        let request = try #require(box.get())
+        #expect(request.url?.path == "/anthropic/v1/messages")
+        #expect(request.value(forHTTPHeaderField: "x-api-key") == "sk")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        let body = try #require(bodyData(from: request))
+        let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(object["system"] as? String == "你是助手")
+        #expect(object["max_tokens"] as? Int == 4096)
+        let tools = try #require(object["tools"] as? [[String: Any]])
+        #expect(tools.first?["input_schema"] != nil)
+    }
+
+    @Test("Anthropic: 流式 text / thinking / tool_use")
+    func anthropicStream() async throws {
+        let session = mockSession()
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            let sse = #"""
+            event: message_start
+            data: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":2}}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"想"}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"你好"}}
+
+            event: content_block_start
+            data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"tool_1","name":"read_file","input":{}}}
+
+            event: content_block_delta
+            data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"a.txt\"}"}}
+
+            event: message_delta
+            data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}
+
+            event: message_stop
+            data: {"type":"message_stop"}
+
+            """#
+            return (response, Data(sse.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = AnthropicAPIClient(
+            baseURL: "https://api.deepseek.com", apiKey: "sk", model: "m", session: session
+        )
+        var text = ""
+        var reasoning = ""
+        var calls: [ToolCall] = []
+        var usage = LLMUsage.zero
+        for try await chunk in client.stream(messages: [.text(.user, "hi")], tools: nil) {
+            text += chunk.delta
+            reasoning += chunk.reasoningDelta ?? ""
+            if let accumulator = chunk.toolCallAccumulator { calls = accumulator }
+            if let chunkUsage = chunk.usage { usage = usage + chunkUsage }
+        }
+        #expect(text == "你好")
+        #expect(reasoning == "想")
+        #expect(calls.first?.name == "read_file")
+        #expect(calls.first?.arguments.contains("a.txt") == true)
+        #expect(usage.cachedTokens == 2)
+        #expect(usage.completionTokens == 5)
+    }
+
 }

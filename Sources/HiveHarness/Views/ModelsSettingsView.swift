@@ -154,6 +154,23 @@ struct ModelsSettingsView: View {
                         SecureField("未配置", text: keyBinding(id))
                             .textFieldStyle(.roundedBorder)
                     }
+                    HStack(spacing: 6) {
+                        Text("API 格式")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: binding.apiFormat) {
+                            ForEach(ProviderAPIFormat.allCases) { format in
+                                Text(format.title).tag(format)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 170)
+                        .disabled(binding.wrappedValue.type == "ollama")
+                        Text(formatHint(binding.wrappedValue))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
                 .padding(8)
                 .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
@@ -276,6 +293,11 @@ struct ModelsSettingsView: View {
                 state.config.models[id] = model
             }
         )
+    }
+
+    private func formatHint(_ provider: ProviderConfig) -> String {
+        if provider.type == "ollama" { return "Ollama 仅支持 Chat Completions" }
+        return provider.apiFormat.detail
     }
 
     private func providerBinding(_ id: String) -> Binding<ProviderConfig> {
