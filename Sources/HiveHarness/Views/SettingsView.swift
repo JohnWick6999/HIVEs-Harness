@@ -10,7 +10,7 @@ struct SettingsView: View {
     @AppStorage(HiveTheme.showUsageBarKey) private var showUsageBar = true
 
     enum Section: String, CaseIterable, Identifiable {
-        case appearance, artifacts, models, agent, personas, mcp, skills, gateway, memory, about
+        case appearance, artifacts, models, agent, personas, mcp, skills, gateway, memory, help, about
 
         var id: String { rawValue }
 
@@ -25,6 +25,7 @@ struct SettingsView: View {
             case .skills: return "技能"
             case .gateway: return "网关"
             case .memory: return "记忆"
+            case .help: return "帮助"
             case .about: return "关于"
             }
         }
@@ -40,6 +41,7 @@ struct SettingsView: View {
             case .skills: return "wand.and.stars"
             case .gateway: return "network"
             case .memory: return "brain"
+            case .help: return "questionmark.circle"
             case .about: return "info.circle"
             }
         }
@@ -136,6 +138,8 @@ struct SettingsView: View {
             GatewaySettingsView()
         case .memory:
             memorySettings
+        case .help:
+            HelpSettingsView()
         case .about:
             aboutSettings
         }
