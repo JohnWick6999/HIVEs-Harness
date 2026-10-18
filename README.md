@@ -13,6 +13,7 @@
 | 💬 流式聊天 | 可折叠侧边栏(品牌/工作区/会话/用户)、多会话、分支、撤销、SSE、工具轨迹 | ✅ |
 | 🙋 主动澄清 | 多问题向导(可回退/保留选择/动画切换);推荐项/自由补充;三档偏好 | ✅ |
 | 🧠 多模型 | 多提供商、模型组回退、Keychain API Key、模型管理 UI | ✅ |
+| 🧩 API 协议 | Chat Completions(默认)/ Responses / Anthropic Messages 三种格式 | ✅ |
 | 🎭 通用人格 | 7 个通用内置人格;可覆盖、恢复默认;自定义人格可增删 | ✅ |
 | 🛠️ 工具与审批 | 底部权限切换、按问题选工具、多工具并行、默认 12 轮 | ✅ |
 | 📎 对话附件 | 上传文件到工作区、附件卡片、Agent 可读取 | ✅ |
@@ -164,6 +165,26 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 - 响应最多 16k 字符,避免撑爆上下文
 
 所以“查询营口天气”会走真实联网请求,而不是先尝试本机 CLI 或声称无法联网。
+
+
+## 🧩 API 协议格式
+
+Provider 现在支持三种 API 格式,在「设置 → 模型 → 提供商 → API 格式」选择:
+
+| 格式 | 端点 | 适用 |
+|---|---|---|
+| `Chat Completions` | `/chat/completions` | OpenAI 兼容、DeepSeek 官方、绝大多数中转(默认) |
+| `Responses` | `/responses` | OpenAI Responses / Codex 风格;DeepSeek 原生支持 |
+| `Anthropic Messages` | `/v1/messages` | Anthropic / Claude Code 生态;DeepSeek 的 base URL 为 `https://api.deepseek.com/anthropic` |
+
+说明:
+
+- **默认仍是 Chat Completions**,旧配置没有新字段时自动回落到该格式,现有 Provider 行为不变
+- Responses 是**无状态**接口,每次自动回传完整 input;流式结束事件为 `response.completed`,没有 `data: [DONE]`
+- Responses 的 reasoning / function_call / cached token 会映射到统一的 reasoning、toolCalls、usage
+- Anthropic 使用 `x-api-key`、顶层 `system`、`tool_use` / `tool_result` 内容块
+- DeepSeek 填 `https://api.deepseek.com` 时会自动补 `/anthropic`;自定义代理请填写完整 base URL
+- Ollama 只支持 Chat Completions,格式选择会自动忽略
 
 ## 📏 模型上下文自动适配
 
@@ -451,7 +472,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 224 tests in 47 suites passed
+# 229 tests in 47 suites passed
 ```
 
 ## 🔄 与旧版的关系

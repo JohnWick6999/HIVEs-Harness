@@ -28,6 +28,19 @@ struct AppConfigTests {
         #expect(decoded == config)
     }
 
+    @Test("旧 ProviderConfig 缺失 apiFormat 时默认 Chat Completions")
+    func providerFormatBackwardCompatible() throws {
+        let legacy = #"{"id":"default","name":"DeepSeek","type":"openai_compatible","baseURL":"https://api.deepseek.com","enabled":true}"#
+        let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(legacy.utf8))
+        #expect(provider.apiFormat == .chatCompletions)
+
+        var updated = provider
+        updated.apiFormat = .responses
+        let encoded = try JSONEncoder().encode(updated)
+        let decoded = try JSONDecoder().decode(ProviderConfig.self, from: encoded)
+        #expect(decoded.apiFormat == .responses)
+    }
+
     @Test("ConfigStore:文件不存在时回退默认值")
     func missingFileFallback() {
         let store = ConfigStore(fileURL: URL(fileURLWithPath: "/nonexistent/path/config.json"))

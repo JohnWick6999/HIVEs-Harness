@@ -1,6 +1,31 @@
 import Foundation
 
-/// 提供商:一组凭据 + 一个 OpenAI 兼容端点。
+/// 提供商 API 协议格式。默认 chat completions 保持旧配置行为不变。
+public enum ProviderAPIFormat: String, Codable, Sendable, CaseIterable, Identifiable {
+    case chatCompletions = "chat_completions"
+    case responses = "responses"
+    case anthropicMessages = "anthropic_messages"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .chatCompletions: return "Chat Completions"
+        case .responses: return "Responses"
+        case .anthropicMessages: return "Anthropic Messages"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .chatCompletions: return "OpenAI 兼容 /chat/completions（默认）"
+        case .responses: return "OpenAI Responses 格式 /responses"
+        case .anthropicMessages: return "Anthropic Messages 格式"
+        }
+    }
+}
+
+/// 提供商:一组凭据 + 一个兼容端点。
 public struct ProviderConfig: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
@@ -8,22 +33,58 @@ public struct ProviderConfig: Codable, Sendable, Equatable, Identifiable {
     public var type: String
     public var baseURL: String
     public var enabled: Bool
+    /// 协议格式:chat_completions / responses / anthropic_messages
+    public var apiFormat: ProviderAPIFormat
 
     public init(
         id: String,
         name: String,
         type: String = "openai_compatible",
         baseURL: String = "https://api.openai.com/v1",
-        enabled: Bool = true
+        enabled: Bool = true,
+        apiFormat: ProviderAPIFormat = .chatCompletions
     ) {
         self.id = id
         self.name = name
         self.type = type
         self.baseURL = baseURL
         self.enabled = enabled
+        self.apiFormat = apiFormat
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, type, baseURL, enabled, apiFormat
+    }
+
+    /// 旧配置没有 apiFormat 时默认 chat completions。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? id
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? "openai_compatible"
+        baseURL = try container.decodeIfPresent(String.self, forKey: .baseURL)
+            ?? "https://api.openai.com/v1"
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        apiFormat = try container.decodeIfPresent(ProviderAPIFormat.self, forKey: .apiFormat)
+            ?? .chatCompletions
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(type, forKey: .type)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(apiFormat, forKey: .apiFormat)
     }
 
     public var isOllama: Bool { type == "ollama" }
+
+    /// Ollama 只支持兼容 chat completions。
+    public var effectiveAPIFormat: ProviderAPIFormat {
+        isOllama ? .chatCompletions : apiFormat
+    }
 }
 
 /// 模型:能力标签 + 上下文预算 + 采样参数。
