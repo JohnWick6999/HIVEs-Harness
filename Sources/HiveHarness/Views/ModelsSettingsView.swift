@@ -126,13 +126,19 @@ struct ModelsSettingsView: View {
                 Spacer()
                 Button("添加") { addProvider() }
             }
+            Text("“OpenAI 兼容”指端点/鉴权类型；实际响应格式由下方“API 协议”决定。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             ForEach(providerIDs, id: \.self) { id in
                 let binding = providerBinding(id)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         TextField("名称", text: binding.name)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 120)
+                            .frame(width: 110)
+                        Text("端点类型")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                         Picker("", selection: binding.type) {
                             Text("OpenAI 兼容").tag("openai_compatible")
                             Text("Ollama").tag("ollama")
@@ -155,7 +161,7 @@ struct ModelsSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                     HStack(spacing: 6) {
-                        Text("API 格式")
+                        Text("API 协议")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Picker("", selection: binding.apiFormat) {
@@ -164,8 +170,9 @@ struct ModelsSettingsView: View {
                             }
                         }
                         .labelsHidden()
-                        .frame(width: 170)
+                        .frame(width: 190)
                         .disabled(binding.wrappedValue.type == "ollama")
+                        .help("Chat Completions 是默认；Responses / Anthropic Messages 需要端点支持对应协议")
                         Text(formatHint(binding.wrappedValue))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)

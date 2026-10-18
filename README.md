@@ -169,11 +169,11 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 
 ## 🧩 API 协议格式
 
-Provider 现在支持三种 API 格式,在「设置 → 模型 → 提供商 → API 格式」选择:
+Provider 现在支持三种 API 协议,在「设置 → 模型 → 提供商 → API 协议」选择:
 
 | 格式 | 端点 | 适用 |
 |---|---|---|
-| `Chat Completions` | `/chat/completions` | OpenAI 兼容、DeepSeek 官方、绝大多数中转(默认) |
+| `Chat Completions` | `/chat/completions` | 默认，OpenAI 兼容 / DeepSeek 官方 / 绝大多数中转 |
 | `Responses` | `/responses` | OpenAI Responses / Codex 风格;DeepSeek 原生支持 |
 | `Anthropic Messages` | `/v1/messages` | Anthropic / Claude Code 生态;DeepSeek 的 base URL 为 `https://api.deepseek.com/anthropic` |
 
