@@ -134,6 +134,12 @@ struct ChatView: View {
                 activeTurnID = state.conversationTurns.last?.id
             }
         }
+        .onChange(of: scrollPosition) { _, visibleID in
+            // 用户自然滚动时,按当前可见消息反推所属轮次。
+            if let visibleID, let turnID = turnID(containing: visibleID) {
+                activeTurnID = turnID
+            }
+        }
         .preferredColorScheme(HiveAppearance(rawValue: appearance)?.colorScheme)
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -613,6 +619,11 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    /// 当前可见消息所属的对话轮次(assistant/tool 消息归到最近的 user 轮)。
+    private func turnID(containing messageID: UUID) -> UUID? {
+        ConversationTurnBuilder.turnID(containing: messageID, in: state.messages)
     }
 
     private var emptyHint: some View {

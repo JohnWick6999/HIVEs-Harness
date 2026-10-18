@@ -62,6 +62,24 @@ public enum ConversationTurnBuilder {
         return turns
     }
 
+    /// 当前可见消息属于哪一轮:assistant / tool 消息归到它之前最近的 user 轮。
+    public static func turnID(containing messageID: UUID, in messages: [ChatMessage]) -> UUID? {
+        guard let visibleIndex = messages.firstIndex(where: { $0.id == messageID }) else {
+            return nil
+        }
+        var result: UUID?
+        for turn in build(messages) {
+            guard let headerIndex = messages.firstIndex(where: { $0.id == turn.targetMessageID })
+            else { continue }
+            if headerIndex <= visibleIndex {
+                result = turn.id
+            } else {
+                break
+            }
+        }
+        return result
+    }
+
     private static func summary(_ text: String, limit: Int) -> String {
         let cleaned = text
             .replacingOccurrences(of: "\n\n[用户上传附件]", with: "\n[附件]")

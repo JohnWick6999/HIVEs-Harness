@@ -472,7 +472,7 @@ SCALW_APPLE/
 
 ```bash
 ./scripts/test.sh
-# 229 tests in 47 suites passed
+# 230 tests in 47 suites passed
 ```
 
 ## 🔄 与旧版的关系

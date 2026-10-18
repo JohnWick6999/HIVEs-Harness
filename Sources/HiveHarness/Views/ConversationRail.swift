@@ -67,12 +67,21 @@ struct ConversationRail: View {
 
     private func mark(_ turn: ConversationTurn) -> some View {
         let active = turn.id == (activeTurnID ?? turns.last?.id)
-        let hot = hovered == turn.id
+        let hoveredOther = hovered == turn.id && !active
+        let width: CGFloat = active ? 22 : (hoveredOther ? 18 : 14)
+        let height: CGFloat = active ? 3 : 2
+        let fill: Color = active
+            ? HiveTheme.amber
+            : (hoveredOther ? HiveTheme.honey.opacity(0.62) : Color.primary.opacity(0.36))
         return Capsule()
-            .fill(hot || active ? HiveTheme.amber : Color.primary.opacity(0.48))
-            .frame(width: hot || active ? 22 : 16, height: hot || active ? 3 : 2)
+            .fill(fill)
+            .frame(width: width, height: height)
             .frame(width: railWidth, alignment: .trailing)
-            .help("跳到第 \(turn.index) 轮")
+            .scaleEffect(active ? 1.06 : (hoveredOther ? 1.02 : 0.92), anchor: .trailing)
+            .shadow(color: active ? HiveTheme.amber.opacity(0.38) : .clear, radius: 4)
+            .animation(.spring(response: 0.40, dampingFraction: 0.56), value: activeTurnID)
+            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: hovered)
+            .help(active ? "当前第 \(turn.index) 轮" : "跳到第 \(turn.index) 轮")
     }
 
     private func turn(at y: CGFloat) -> ConversationTurn? {
