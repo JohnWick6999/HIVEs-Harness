@@ -168,6 +168,27 @@ Agent 内置 `http_get`(受审批保护的 HTTP GET):
 所以“查询营口天气”会走真实联网请求,而不是先尝试本机 CLI 或声称无法联网。
 
 
+
+## 🔐 API Key 与安全
+
+本项目**不包含任何真实 API Key**。所有模型 Key 都必须由使用者自行创建并填入本机：
+
+```text
+设置 → 模型 → 提供商 → API Key
+Key 只保存在 macOS Keychain，不写入 config.json。
+```
+
+也可以使用环境变量或你自己的 Secret Manager。请勿把 Key 写入源码、测试、README、截图或提交到 Git。
+
+提交前请运行：
+
+```bash
+./scripts/check_secrets.sh
+./scripts/check_secrets.sh --history
+```
+
+`scripts/install_git_hooks.sh` 可安装 pre-commit 与 pre-push 扫描；CI 也会执行完整历史扫描。
+
 ## 🧩 API 协议格式
 
 Provider 现在支持三种 API 协议,在「设置 → 模型 → 提供商 → API 协议」选择:

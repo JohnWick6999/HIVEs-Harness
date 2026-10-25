@@ -39,3 +39,11 @@ config/secrets.*
 
 # App 打包产物
 /build/
+
+# Credentials: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+security-backups/
