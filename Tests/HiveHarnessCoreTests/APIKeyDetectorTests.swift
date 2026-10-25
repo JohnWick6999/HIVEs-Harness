@@ -2,6 +2,7 @@ import Foundation
 @testable import HiveHarnessCore
 import Testing
 
+// SECURITY: fixture-only fake key. Never put a real provider credential in tests.
 @Suite("API Key 防误填")
 struct APIKeyDetectorTests {
     @Test("识别常见 Key 形态")
